@@ -17,7 +17,21 @@ public struct InstalledApplication: Equatable {
 }
 
 public enum AppRouting {
+    private static let catalogLock = NSLock()
+    nonisolated(unsafe) private static var catalog: (apps: [InstalledApplication], at: Date)?
+
+    /// The catalog walks folders, Spotlight and every Info.plist. Reuse it for 30 seconds:
+    /// eager preparation, final preparation and retries of one utterance share one scan.
     public static func installed() -> [InstalledApplication] {
+        catalogLock.lock()
+        if let catalog, Date().timeIntervalSince(catalog.at) < 30 { catalogLock.unlock(); return catalog.apps }
+        catalogLock.unlock()
+        let apps = scanInstalled()
+        catalogLock.lock(); catalog = (apps, Date()); catalogLock.unlock()
+        return apps
+    }
+
+    private static func scanInstalled() -> [InstalledApplication] {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let folders = [
             URL(fileURLWithPath: "/Applications"),
