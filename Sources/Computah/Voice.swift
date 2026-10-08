@@ -1,4 +1,5 @@
 import AVFoundation
+import os
 import FluidAudio
 import Foundation
 import ComputahCore
@@ -27,6 +28,9 @@ import ComputahCore
 
     private var engine: AVAudioEngine?
     private var routeObserver: NSObjectProtocol?
+    /// Microphone lifecycle events, readable with: log show --predicate 'subsystem == "local.computah"'
+    static let log = Logger(subsystem: "local.computah", category: "voice")
+    private var restarts: [Date] = []
     private var consumer: Task<Void, Never>?
     private var diagnosticProducer: Task<Void, Never>?
     private var generation = UUID()
@@ -41,6 +45,8 @@ import ComputahCore
 
     func start(diagnosticPCM: Data? = nil) {
         guard !isListening else { return }
+        Self.log.notice("start requested")
+        restarts = []
         generation = UUID()
         let id = generation
         endpoint = Endpointer()
@@ -69,6 +75,7 @@ import ComputahCore
                 stop(message: "Microphone could not start: \(error.localizedDescription)")
                 return
             }
+            Self.log.notice("listening; input format \(self.engine?.inputNode.outputFormat(forBus: 0).description ?? "diagnostic", privacy: .public)")
             onStatus?("Listening…")
             consumer = Task { [weak self] in
                 for await chunk in pair.stream {
@@ -169,6 +176,14 @@ import ComputahCore
     /// on the new device; the current turn ends, because audio around the switch is missing.
     private func restartMicrophone(sink: AsyncStream<[Float]>.Continuation, id: UUID) {
         guard generation == id else { return }
+        // Starting an engine can itself post a configuration change. Rebuilding on each one loops
+        // (the microphone opens and closes); allow three rebuilds per 10 s, then stop with a reason.
+        restarts = restarts.filter { Date().timeIntervalSince($0) < 10 } + [Date()]
+        Self.log.notice("audio configuration change; rebuild \(self.restarts.count, privacy: .public)")
+        guard restarts.count <= 3 else {
+            stop(message: "The audio input keeps changing. Check the input device in System Settings → Sound.")
+            return
+        }
         if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
         routeObserver = nil
         engine?.inputNode.removeTap(onBus: 0)
@@ -246,11 +261,13 @@ import ComputahCore
 
     private func loseAudio(id: UUID) {
         guard generation == id else { return }
+        Self.log.error("audio lost")
         onInputLost?()
         stop(message: "Audio was interrupted. Stopped the affected request; start listening again and repeat it.")
     }
 
     func stop(message: String = "Ready") {
+        Self.log.notice("stop: \(message, privacy: .public)")
         generation = UUID()
         if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
         routeObserver = nil

@@ -6,6 +6,14 @@ case "${1:-}" in
   *) print -u2 'Usage: zsh scripts/build.sh'; exit 2 ;;
 esac
 cd "$project_dir"
+# Command Line Tools 27 ship a macOS 27 SDK whose SwiftUI needs a macro plugin that only Xcode
+# provides. Without Xcode, build against the newest macOS 26 SDK that is still installed.
+if [[ -z "${SDKROOT:-}" && "$(xcode-select -p)" == */CommandLineTools ]]; then
+  older_sdk="$(ls -d "$(xcode-select -p)"/SDKs/MacOSX26.*.sdk 2>/dev/null | sort -V | tail -1)"
+  if [[ -n "$older_sdk" ]] && ! find "$(xcode-select -p)" -iname '*SwiftUIMacros*' -print -quit | grep -q .; then
+    export SDKROOT="$older_sdk"
+  fi
+fi
 swift build -c release
 # iCloud-synced folders (Desktop & Documents) re-attach Finder metadata that breaks codesign.
 # Build the bundle outside them by default; COMPUTAH_APP_DIR overrides the location.
