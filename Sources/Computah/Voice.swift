@@ -276,6 +276,11 @@ import ComputahCore
         private var voiced = 0
         private var silent = 0
         private var sinceLastPartial = 0
+        /// The last finished request, kept briefly so a thinking pause does not drop its words.
+        private var previous: [Float] = []
+        private var sinceFinal = Int.max
+        /// Speech that resumes within this window continues the previous request.
+        static let continuationWindow = 16_000 * 4
 
         mutating func feed(_ chunk: [Float], rms: Float) -> Event {
             let speech = rms > max(noise * 3, 0.012)
@@ -283,12 +288,17 @@ import ComputahCore
             if finalized {
                 history.append(contentsOf: chunk)
                 if history.count > Voice.preRoll { history.removeFirst(history.count - Voice.preRoll) }
+                if sinceFinal < Int.max - chunk.count { sinceFinal += chunk.count }
                 voiced = speech ? voiced + chunk.count : 0
                 guard voiced >= 1_920 else { return .none }  // 120 ms of speech starts a turn
                 turn = UUID().uuidString
                 finalized = false
                 eagerArmed = false
-                utterance = history
+                // A new turn transcribes the earlier words too, so the final text is the whole request.
+                // The coordinator then replaces the earlier, partial command with the complete one.
+                let continues = sinceFinal <= Self.continuationWindow &&
+                    previous.count + history.count + 4_800 < Voice.maxUtterance
+                utterance = continues ? previous + [Float](repeating: 0, count: 4_800) + history : history
                 history = []
                 silent = 0
                 sinceLastPartial = 0
@@ -307,6 +317,8 @@ import ComputahCore
             if silence >= 1.2 || utterance.count >= Voice.maxUtterance {
                 finalized = true
                 eagerArmed = false
+                previous = Array(utterance.dropLast(max(0, silent - 4_800)))
+                sinceFinal = 0
                 return .final(turn, utterance)
             }
             if silence >= 0.5, !eagerArmed {
