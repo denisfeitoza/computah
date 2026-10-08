@@ -23,7 +23,11 @@ import FluidAudio
     var typedTurnID = UUID().uuidString
     var appBeforeReview: NSRunningApplication?
     lazy var jevCosts = JevCostStore(file: root.appendingPathComponent("outputs/computah/jev-costs.json"))
-    lazy var engine: CommandEngine = CommandEngine(selector: makeSelector())
+    lazy var engine: CommandEngine = {
+        var engine = CommandEngine(selector: makeSelector())
+        engine.fastVerification = setting("COMPUTAH_FAST_VERIFY") != "0"
+        return engine
+    }()
 
     /// TypeSafe Jev when its key exists (fastest), otherwise an OpenRouter chat model.
     /// `COMPUTAH_DECISION=jev|openrouter` forces one backend.

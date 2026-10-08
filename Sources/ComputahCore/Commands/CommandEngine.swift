@@ -47,6 +47,8 @@ enum ObservationRequest { case initial, recovery(pid_t), expanded(pid_t), region
 public struct CommandEngine {
     public var inputPermit: InputPermit = .standalone()
     public var selector: JevSelector
+    /// Skip the model judgment after an input when the screen visibly changed.
+    public var fastVerification = false
     var executePrepared: (PreparedAction) async throws -> String = { try await $0.execute() }
     var observationForegroundPID: () -> pid_t? = { NSWorkspace.shared.frontmostApplication?.processIdentifier }
     var readObservation: (ObservationRequest) async throws -> AXSnapshot = { request in

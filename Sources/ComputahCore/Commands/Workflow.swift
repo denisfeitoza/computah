@@ -144,7 +144,8 @@ extension CommandEngine {
                 var satisfactionReferenceEvidence: String?
                 var recoveredBeforeDispatch = false
                 var recoveryBinding = checkpoint.read().noInputBinding
-                for attempt in 0..<6 {
+                // Fingerprint mode spends one extra planning round to confirm completion.
+                for attempt in 0..<(fastVerification ? 12 : 6) {
                     guard Date() < deadline else { return result("Stopped at the \(Int(Self.turnTimeLimit))-second command limit.", false) }
                     let attemptStart = Date()
                     let prepared: PreparedAction
@@ -579,6 +580,12 @@ extension CommandEngine {
         // An action may open a new window. Observe it without authorizing input;
         // the outcome and object judgments must establish the transition first.
         var after = try await observeAfterInput(pid: before.pid)
+        // Fingerprint mode: a changed screen counts as intermediate progress without a model call.
+        // Completion is still judged: the planner must later choose already_satisfied, which a
+        // fresh read and a model judgment confirm. Unchanged screens still get judged below.
+        if fastVerification, after.evidence != before.evidence {
+            return (after, "progress", 0)
+        }
         var verdict = "pending"
         var modelSeconds = 0.0
         var lastJudged: String?
