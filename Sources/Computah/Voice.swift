@@ -144,21 +144,38 @@ import ComputahCore
                 inputStatus.pointee = .haveData
                 return buffer
             }
-            guard status != .error, error == nil, let channel = converted.floatChannelData?[0], converted.frameLength > 0 else {
+            guard status != .error, error == nil else {
                 Task { @MainActor [weak self] in self?.loseAudio(id: id) }
                 return
             }
+            // The resampler can return zero frames while it primes; that is not lost audio.
+            guard let channel = converted.floatChannelData?[0], converted.frameLength > 0 else { return }
             if case .dropped = sink.yield(Array(UnsafeBufferPointer(start: channel, count: Int(converted.frameLength)))) {
                 Task { @MainActor [weak self] in self?.loseAudio(id: id) }
             }
         }
         // AirPods or a new default input stop the engine; a silent "Listening…" must not remain.
         routeObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: audio, queue: .main) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.loseAudio(id: id) }
+            Task { @MainActor [weak self] in self?.restartMicrophone(sink: sink, id: id) }
         }
         do { try audio.start() }
         catch { input.removeTap(onBus: 0); throw error }
         engine = audio
+    }
+
+    /// A new input device (AirPods, a USB mic) changes the engine's format. Rebuild the tap
+    /// on the new device; the current turn ends, because audio around the switch is missing.
+    private func restartMicrophone(sink: AsyncStream<[Float]>.Continuation, id: UUID) {
+        guard generation == id else { return }
+        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
+        routeObserver = nil
+        engine?.inputNode.removeTap(onBus: 0)
+        engine?.stop()
+        engine = nil
+        if !endpoint.finalized { onInputLost?() }
+        endpoint = Endpointer()
+        do { try startMicrophone(sink: sink, id: id) }
+        catch { loseAudio(id: id) }
     }
 
     private func consume(_ chunk: [Float], id: UUID) {
