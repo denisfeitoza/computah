@@ -35,7 +35,9 @@ import AppKit
         statusLine.title = String(status.prefix(80))
     }
 
-    func menuWillOpen(_ menu: NSMenu) { wakeItem.state = isWakeWordOn() ? .on : .off }
+    func menuWillOpen(_ menu: NSMenu) {
+        wakeItem.title = isWakeWordOn() ? "Desativar palavra de ativação \"Computa\"" : "Ativar palavra de ativação \"Computa\" (escuta contínua)"
+    }
     @objc private func toggleWakeWord() { wakeWord?() }
     @objc private func toggleListening() { toggle?() }
     @objc private func openDebug() { debug?() }

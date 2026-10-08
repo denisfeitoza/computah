@@ -102,6 +102,17 @@ public struct CommandEngine {
         executePrepared = { try await $0.execute(physicalActivation: false) }
     }
 
+    /// Whether a paused utterance already reads as a whole request, or the speaker is mid-thought.
+    /// Speech endpointing waits longer for an unfinished one. Unknown counts as finished.
+    public func utteranceSeemsFinished(_ text: String) async -> Bool {
+        guard let judged = try? await selector.judge(state: ["utterance_so_far": text], questions: [
+            JevQuestion(instructions: LanguagePrompts.text("utterance_complete"), options: [
+                JevOption(id: "complete", description: "A whole request; the speaker can stop here."),
+                JevOption(id: "unfinished", description: "Cut off mid-thought: it ends with a dangling word, an open clause, or a missing object or value."),
+            ], key: "utterance")]) else { return true }
+        return judged.answer("utterance") != "unfinished"
+    }
+
     public func prepare(_ command: String, observation: AXSnapshot? = nil,
                         progress: [String] = [], excluded: Set<String> = []) async throws -> PreparedAction {
         try await prepare(command, from: 0, observation: observation, progress: progress, excluded: excluded)

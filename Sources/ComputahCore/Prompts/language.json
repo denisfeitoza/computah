@@ -71,6 +71,7 @@
     "memory_forget": "Erase the remembered facts.",
     "memory_save_routine": "Save the last completed command as a routine; the routine name is the value to copy from the request.",
     "memory_run_routine": "Run one of saved_routines by name.",
-    "routine": "Which saved routine does the request name?"
+    "routine": "Which saved routine does the request name?",
+    "utterance_complete": "The user is speaking a command to operate their Mac and has paused. Judge only the wording of utterance_so_far (any language): is it a whole request, or did the speaker stop mid-sentence and will likely continue?"
   }
 }

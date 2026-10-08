@@ -19,6 +19,8 @@ import ComputahCore
     private(set) var isListening = false
     /// True while Computah itself is talking; the microphone must not turn that into a command.
     var isSuppressed: () -> Bool = { false }
+    /// Judges whether a paused utterance is a whole request; an unfinished one waits longer.
+    var seemsFinished: ((String) async -> Bool)?
 
     /// Language hint for Parakeet's script filter. `COMPUTAH_SPEECH_LANGUAGE` overrides it.
     var language: Language? = .portuguese
@@ -202,6 +204,13 @@ import ComputahCore
                 onProviderEvent?(["type": "TurnInfo", "event": "EagerEndOfTurn", "transcript": text, "turn": turn])
                 onText?(text, false, turn)
                 onEager?(text, turn)
+                if let seemsFinished {
+                    Task { @MainActor [weak self] in
+                        let finished = await seemsFinished(text)
+                        guard let self, generation == id, endpoint.turn == turn, !endpoint.finalized else { return }
+                        endpoint.setVerdict(finished)
+                    }
+                }
             }
         case .resumed(let turn):
             onProviderEvent?(["type": "TurnInfo", "event": "TurnResumed", "turn": turn])
@@ -276,6 +285,9 @@ import ComputahCore
         private var voiced = 0
         private var silent = 0
         private var sinceLastPartial = 0
+        /// Model verdict on the paused text: true = whole request, false = mid-thought, nil = not judged yet.
+        private var verdict: Bool?
+        mutating func setVerdict(_ finished: Bool) { if eagerArmed { verdict = finished } }
         /// The last finished request, kept briefly so a thinking pause does not drop its words.
         private var previous: [Float] = []
         private var sinceFinal = Int.max
@@ -294,6 +306,7 @@ import ComputahCore
                 turn = UUID().uuidString
                 finalized = false
                 eagerArmed = false
+                verdict = nil
                 // A new turn transcribes the earlier words too, so the final text is the whole request.
                 // The coordinator then replaces the earlier, partial command with the complete one.
                 let continues = sinceFinal <= Self.continuationWindow &&
@@ -308,13 +321,15 @@ import ComputahCore
             sinceLastPartial += chunk.count
             if speech {
                 silent = 0
-                if eagerArmed { eagerArmed = false; return .resumed(turn) }
+                if eagerArmed { eagerArmed = false; verdict = nil; return .resumed(turn) }
             } else {
                 silent += chunk.count
             }
             let silence = Double(silent) / Voice.sampleRate
-            // Natural pauses inside one request reach about 0.8 s in Portuguese speech; end the turn later.
-            if silence >= 1.2 || utterance.count >= Voice.maxUtterance {
+            // End quickly after a whole request, wait through a thinking pause after an unfinished one.
+            // Without a verdict yet, wait a little longer than for a confirmed whole request.
+            let needed = verdict == true ? 1.0 : verdict == false ? 3.0 : 1.5
+            if silence >= needed || utterance.count >= Voice.maxUtterance {
                 finalized = true
                 eagerArmed = false
                 previous = Array(utterance.dropLast(max(0, silent - 4_800)))

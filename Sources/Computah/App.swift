@@ -129,6 +129,11 @@ import FluidAudio
         }
         voice.onLevel = { [weak self] level in self?.notch?.audioLevel(level) }
         voice.isSuppressed = { [weak self] in self?.speech.isSpeaking == true }
+        voice.seemsFinished = { [weak self] text in
+            guard let self else { return true }
+            let engine = engine
+            return await engine.utteranceSeemsFinished(text)
+        }
     }
 
     func toggleVoice() {
