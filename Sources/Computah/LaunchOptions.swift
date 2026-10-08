@@ -14,7 +14,7 @@ struct LaunchOptions {
         ]
         let switches: Set<String> = [
             "--help", "--record-diagnostics", "--physical-activation", "--native-activation", "--inspect",
-            "--inspect-initial", "--inspect-all-children", "--inspect-focus", "--hover",
+            "--inspect-initial", "--inspect-all-children", "--inspect-focus", "--hover", "--mcp",
         ]
         var index = 0
         while index < arguments.count {

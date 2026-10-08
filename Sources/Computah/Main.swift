@@ -8,6 +8,7 @@ import AppKit
             Start the UI: Computah --root /path/to/checkout
             Optional history: --record-diagnostics
             Read native controls: --inspect or --inspect-app BUNDLE_ID
+            MCP server over stdio (needs the app running): --mcp
             Live input: --command TEXT | --scenario PATH | --audio-pcm PATH
             Explicit private outputs: --report PATH | --trace-dir PATH | --snapshot-json PATH
             Live diagnostics use real providers/apps. See docs/TESTING.md and docs/PRIVACY.md.
@@ -18,6 +19,7 @@ import AppKit
             fputs(LaunchOptions.current.errors.joined(separator: "\n") + "\n", stderr)
             exit(1)
         }
+        if LaunchOptions.current.contains("--mcp") { MCPBridge.run() }
         if let code = NativeInspection.runIfRequested() { exit(code) }
         let app = NSApplication.shared
         let delegate = App()

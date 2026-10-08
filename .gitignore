@@ -31,3 +31,6 @@ xcuserdata/
 # Local agent configuration.
 /.agents/
 /.codex/
+
+# Local Claude Code settings
+.claude/settings.local.json

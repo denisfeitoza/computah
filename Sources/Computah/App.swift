@@ -7,6 +7,8 @@ import FluidAudio
     let voice = Voice()
     let speech = AVSpeechSynthesizer()
     var credentialCache: [String: String?] = [:]
+    var controlServer: ControlServer?
+    var remoteResult: CheckedContinuation<WorkflowResult, Never>?
     var notch: NotchController?
     var listeningSounds: ListeningSounds?
     var shortcut: ListenShortcut?
@@ -52,6 +54,7 @@ import FluidAudio
         coordinator.onResult = { [weak self] result, current in
             guard let self else { return }
             if result.events.contains(where: { $0.action.hasPrefix("Answer") }) { speak(result.status) }
+            if current { finishRemote(result) }
             let last = result.events.last
             record(RunRecord(command: result.command, status: result.status,
                 observation: last?.after.isEmpty == false ? last?.after : last?.before,
@@ -72,6 +75,11 @@ import FluidAudio
         shortcut = ListenShortcut { [weak self] in self?.toggleVoice() }
         notch.show()
         Voice.preload()
+        let server = ControlServer { [weak self] tool, arguments in
+            await self?.handleRemote(tool, arguments) ?? ["error": "Computah is closing."]
+        }
+        server.start()
+        controlServer = server
         refresh()
     }
 
@@ -152,6 +160,7 @@ import FluidAudio
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        controlServer?.stop()
         coordinator.shutdown()
         voice.stop()
         jevCosts.flush()
