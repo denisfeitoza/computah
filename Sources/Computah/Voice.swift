@@ -31,6 +31,8 @@ import ComputahCore
     /// Microphone lifecycle events, readable with: log show --predicate 'subsystem == "local.computah"'
     static let log = Logger(subsystem: "local.computah", category: "voice")
     private var restarts: [Date] = []
+    private var settleWork: DispatchWorkItem?
+    private var chunksSinceLog = 0
     private var consumer: Task<Void, Never>?
     private var diagnosticProducer: Task<Void, Never>?
     private var generation = UUID()
@@ -164,8 +166,23 @@ import ComputahCore
             }
         }
         // AirPods or a new default input stop the engine; a silent "Listening…" must not remain.
-        routeObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: audio, queue: .main) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.restartMicrophone(sink: sink, id: id) }
+        // Bluetooth headsets switch profile when the microphone opens and post several changes in a row.
+        // Let the route settle, then rebuild only if the engine actually stopped.
+        routeObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: audio, queue: .main) { [weak self, weak audio] _ in
+            Task { @MainActor [weak self, weak audio] in
+                guard let self else { return }
+                settleWork?.cancel()
+                let work = DispatchWorkItem { [weak self, weak audio] in
+                    guard let self, generation == id else { return }
+                    if audio?.isRunning == true {
+                        Self.log.notice("audio configuration settled; engine still running")
+                        return
+                    }
+                    restartMicrophone(sink: sink, id: id)
+                }
+                settleWork = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: work)
+            }
         }
         do { try audio.start() }
         catch { input.removeTap(onBus: 0); throw error }
@@ -197,6 +214,11 @@ import ComputahCore
 
     private func consume(_ chunk: [Float], id: UUID) {
         let rms = sqrt(chunk.reduce(0) { $0 + $1 * $1 } / Float(max(1, chunk.count)))
+        chunksSinceLog += chunk.count
+        if chunksSinceLog >= 16_000 * 5 {
+            chunksSinceLog = 0
+            Self.log.debug("audio flowing; rms \(rms, privacy: .public)")
+        }
         onLevel?(min(1, Double(rms) * 12))
         if isSuppressed() {
             endpoint = Endpointer()
@@ -240,7 +262,9 @@ import ComputahCore
     }
 
     private func deliverFinal(_ samples: [Float], turn: String, id: UUID) {
+        Self.log.notice("final turn; \(samples.count / 16_000, privacy: .public) s of audio")
         transcribe(samples, turn: turn, id: id) { [weak self] text in
+            Self.log.notice("final transcript has \(text.count, privacy: .public) characters")
             self?.onProviderEvent?(["type": "TurnInfo", "event": "EndOfTurn", "transcript": text, "turn": turn])
             self?.onText?(text, true, turn)
         }
@@ -268,6 +292,8 @@ import ComputahCore
 
     func stop(message: String = "Ready") {
         Self.log.notice("stop: \(message, privacy: .public)")
+        settleWork?.cancel()
+        settleWork = nil
         generation = UUID()
         if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
         routeObserver = nil
