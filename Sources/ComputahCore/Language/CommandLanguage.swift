@@ -55,7 +55,8 @@ struct SourceToken {
 
 public enum GoalRelationship: String, Codable, CaseIterable { case replace, revise, resume, append, cancel, unclear }
 
-enum CommandRoute: String { case application, navigation, controls, answer, shortcut }
+enum CommandRoute: String { case application, navigation, controls, answer, shortcut, memory }
+enum MemoryAction: String, CaseIterable { case remember, forget, save_routine, run_routine }
 enum ValueFormat: String, CaseIterable { case absent, literal, address, number, percent, composed }
 
 struct InterpretedCommand {
@@ -73,6 +74,8 @@ struct InterpretedCommand {
     var activatesApp: Bool = false
     var valueIsNormalized: Bool = true
     var shortcut: String? = nil
+    var memoryAction: MemoryAction? = nil
+    var routine: String? = nil
 
     var canType: Bool { format == .literal || format == .address || format == .composed }
     var canSetNumber: Bool { format == .number || format == .percent }
@@ -124,6 +127,10 @@ struct CommandLanguage {
             "source_tokens": tokens.enumerated().map { ["id": "t\($0.offset)", "text": $0.element.modelText,
                 "start_utf16": $0.element.range.location, "end_utf16": NSMaxRange($0.element.range)] as [String: Any] }]
         if !conversationContext.isEmpty { state["conversation_context"] = conversationContext }
+        let facts = UserMemory.facts
+        let routineNames = UserMemory.routines.keys.sorted()
+        if !facts.isEmpty { state["user_memory"] = facts }
+        if !routineNames.isEmpty { state["saved_routines"] = routineNames }
         var positions = tokens.enumerated().map {
             JevOption(id: "t\($0.offset)", description: "Source token \($0.offset): \($0.element.modelText)")
         }
@@ -192,10 +199,14 @@ struct CommandLanguage {
             JevOption(id: "reobserve", description: LanguagePrompts.text("action_reobserve")),
             JevOption(id: "already_satisfied", description: LanguagePrompts.text("action_already_satisfied"))]
         var questions = (fixedClause == nil ? [question("boundary", ends)] : []) + [
-            question("route", ([CommandRoute.application, .navigation, .controls, .answer] + (shortcuts.isEmpty ? [] : [.shortcut])).map {
+            question("route", ([CommandRoute.application, .navigation, .controls, .answer, .memory] + (shortcuts.isEmpty ? [] : [.shortcut])).map {
                 JevOption(id: $0.rawValue, description: LanguagePrompts.text("route_" + $0.rawValue)) }),
             ] + valueQuestions() + (shortcuts.isEmpty ? [] : [question("shortcut", shortcuts.enumerated().map {
                 JevOption(id: "sc\($0.offset)", description: "Run the shortcut named: \($0.element)") })]) + [
+            question("memory_action", MemoryAction.allCases.map {
+                JevOption(id: $0.rawValue, description: LanguagePrompts.text("memory_" + $0.rawValue)) })] +
+            (routineNames.isEmpty ? [] : [question("routine", routineNames.enumerated().map {
+                JevOption(id: "rt\($0.offset)", description: "Saved routine named: \($0.element)") })]) + [
             question("application", appOptions.isEmpty ? [JevOption(id: "unavailable", description: "No application catalog available")] : appOptions),
             question("action", controlOptions)]
         let observedTargetIDs = Set(controls.map { byNode[$0.nodeID]!.count > 1 ? "target_n\($0.nodeID)" : $0.id })
@@ -339,12 +350,16 @@ struct CommandLanguage {
         var valueRange: NSRange?
         var value: String?
         let selectedControl = controls.first { $0.id == actionID }
-        let shortcutInput = route == .shortcut && [ValueFormat.literal.rawValue, ValueFormat.composed.rawValue].contains(valueAnswers.format ?? "")
-        let requiresValue = route == .navigation || shortcutInput ||
+        let memoryAction = route == .memory ? answers.answer("memory_action").flatMap(MemoryAction.init(rawValue:)) : nil
+        let shortcutInput = route == .shortcut &&
+            [ValueFormat.literal.rawValue, ValueFormat.composed.rawValue].contains(valueAnswers.format ?? "")
+        // A routine needs a name; ask for the value span again if the first answer had none.
+        let requiresValue = route == .navigation || shortcutInput || memoryAction == .save_routine ||
             selectedControl.map { [.typeText, .replaceText, .setNumber].contains($0.operation) } == true
         if requiresValue {
             if valueAnswers.format == nil || valueAnswers.format == ValueFormat.absent.rawValue {
-                conditionalState["selected_target"] = selectedControl?.description ?? "Navigate to requested address"
+                conditionalState["selected_target"] = memoryAction == .save_routine ? "The name to save the routine under"
+                    : selectedControl?.description ?? "Navigate to requested address"
                 let resolved = try await selector.judge(state: conditionalState, questions: valueQuestions())
                 valueAnswers = ValueSelection(resolved)
             }
@@ -361,6 +376,7 @@ struct CommandLanguage {
                     "original_request": source, "active_instruction": clause.text,
                     "selected_field": selectedControl?.description ?? "Navigation address",
                     "observed_scene": observation?.selectionEvidence ?? "Unknown",
+                    "user_memory": UserMemory.facts,
                     "conversation_context": conversationContext])
             } else if format != .absent {
                 guard let firstID = valueAnswers.first, let lastID = valueAnswers.last,
@@ -389,6 +405,10 @@ struct CommandLanguage {
         result.valueSource = valueAnswers.first.flatMap { valueTokens[$0]?.source }
         result.actionID = actionID
         result.activatesApp = needsActivation
+        result.memoryAction = memoryAction
+        if memoryAction == .run_routine {
+            result.routine = routineNames.indices.first { "rt\($0)" == answers.answer("routine") }.map { routineNames[$0] }
+        }
         if route == .shortcut {
             result.shortcut = shortcuts.indices.first { "sc\($0)" == answers.answer("shortcut") }.map { shortcuts[$0] }
         }

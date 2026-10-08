@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 extension App {
     var recordsDiagnostics: Bool { LaunchOptions.current.contains("--record-diagnostics") }
@@ -48,11 +47,20 @@ extension App {
         return dotenv(name)
     }
 
+    /// Reads through /usr/bin/security, the tool that created the item and is already on its access
+    /// list. A direct SecItem read from this app prompts for the login password after every rebuild,
+    /// because each build changes the code hash that "Always Allow" was bound to.
     static func keychain(_ service: String) -> String? {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                                    kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data,
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", service, "-w"]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+        guard (try? process.run()) != nil else { return nil }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
               let value = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty else { return nil }
         return value

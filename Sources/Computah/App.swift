@@ -43,7 +43,7 @@ import FluidAudio
             selector.backend = .openRouter
         }
         if let openRouter = credential("OPENROUTER_API_KEY") {
-            selector.textModel = TextModel(apiKey: openRouter, model: setting("COMPUTAH_TEXT_MODEL") ?? "inception/mercury-2.5")
+            selector.textModel = TextModel(apiKey: openRouter, model: setting("COMPUTAH_TEXT_MODEL") ?? "google/gemini-3.5-flash-lite")
         }
         selector.costs = jevCosts.tracker
         return selector
@@ -58,7 +58,8 @@ import FluidAudio
         }
         coordinator.onResult = { [weak self] result, current in
             guard let self else { return }
-            if result.events.contains(where: { $0.action.hasPrefix("Answer") }) { speak(result.status) }
+            let spoken = ["Answer", "Remember", "Forget", "Save routine"]
+            if result.events.contains(where: { event in spoken.contains { event.action.hasPrefix($0 + " — ") } }) { speak(result.status) }
             if current { finishRemote(result) }
             let last = result.events.last
             record(RunRecord(command: result.command, status: result.status,

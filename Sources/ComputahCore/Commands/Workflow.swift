@@ -51,6 +51,7 @@ struct OutcomeJudgment {
 
 extension CommandEngine {
     static let turnTimeLimit: TimeInterval = 90
+    @TaskLocal static var routineDepth = 0
 
     static func failureStatus(_ error: Error, didDispatch: Bool) -> String {
         "Stopped: \(error.localizedDescription) " + (didDispatch
@@ -239,11 +240,27 @@ extension CommandEngine {
                     }
                     if let answer = prepared.answer {
                         events.append(WorkflowEvent(
-                            clause: clause, action: "Answer — no input",
+                            clause: clause, action: "\(prepared.description ?? "Answer") — no input",
                             before: prepared.snapshot?.evidence ?? prepared.observation, after: "",
                             outcome: answer, selectionSeconds: Date().timeIntervalSince(prepareStart),
                             verificationSeconds: 0, requests: prepared.requests, selectionDetails: prepared.observation))
                         answers.append(answer)
+                        satisfied = true
+                        break
+                    }
+                    if let routine = prepared.routine {
+                        guard Self.routineDepth == 0 else {
+                            return result("A routine cannot start another routine.", false)
+                        }
+                        let nested = try await Self.$routineDepth.withValue(1) { try await runWorkflow(routine.command) }
+                        events.append(contentsOf: nested.events)
+                        guard nested.complete else {
+                            return result("Routine \(routine.name) stopped: \(nested.status)", false)
+                        }
+                        if nested.events.contains(where: { $0.action.hasSuffix("— no input") && $0.action != "Already satisfied — no input" }) {
+                            answers.append(nested.status)
+                        }
+                        history.append("The routine \(routine.name) completed: \(routine.command)")
                         satisfied = true
                         break
                     }
@@ -466,6 +483,9 @@ extension CommandEngine {
                 error is CancellationError
                     ? "Superseded by a newer request. Earlier input remains subject to observation."
                     : status, false)
+        }
+        if completed > 0, Self.routineDepth == 0, !events.contains(where: { ["Remember", "Forget", "Save routine"].contains($0.action.components(separatedBy: " — ").first ?? "") }) {
+            UserMemory.completed(command)
         }
         return result(completed == 0 ? "No command." : answers.isEmpty ? "Completed and observed." : answers.joined(separator: "\n"),
                       completed > 0)

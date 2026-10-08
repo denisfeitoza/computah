@@ -62,8 +62,15 @@
     "progress_effect_conflicting": "The affected prerequisite target or changed value conflicts with the goal or required object binding.",
     "progress_effect_unknown": "The prerequisite target or its relation to the request cannot be established.",
     "format_composed": "The text to enter is described, not dictated: it must be written, completed, translated or inferred from the request and visible context (for example: reply saying I will be late; write a short thank-you; fill the origin with my city when the request names it indirectly). Choose this only when no contiguous source span is already the exact text to enter.",
-    "route_answer": "Answer a question about, summarize, read, or explain content that is visible in the current app, without sending any input. Choose this only when the user asks for information and not for an action.",
+    "route_answer": "Answer a question about, summarize, read, or explain content that is visible in the current app, without sending any input. Choose this only when the user asks for information and not for an action. This includes questions about facts in user_memory.",
     "route_shortcut": "Run one of the user's Shortcuts (listed in the shortcut question) when a shortcut's name clearly performs the instruction. Prefer a matching shortcut over many interface steps.",
-    "shortcut": "Which entry from the user's Shortcuts library performs the first remaining instruction? Match the user's intent to the shortcut's name. Choose none_here unless one shortcut clearly performs it."
+    "shortcut": "Which entry from the user's Shortcuts library performs the first remaining instruction? Match the user's intent to the shortcut's name. Choose none_here unless one shortcut clearly performs it.",
+    "route_memory": "Store a new fact the user states (lembra que…), erase remembered facts, save the last completed command as a named routine, or run a saved routine. Questions about what was remembered are not memory operations: they use answer.",
+    "memory_action": "Assuming the first remaining instruction is a memory operation, which one is it?",
+    "memory_remember": "Store a fact or preference the user states so later requests can use it (for example: lembra que meu sócio é o João).",
+    "memory_forget": "Erase the remembered facts.",
+    "memory_save_routine": "Save the last completed command as a routine; the routine name is the value to copy from the request.",
+    "memory_run_routine": "Run one of saved_routines by name.",
+    "routine": "Which saved routine does the request name?"
   }
 }

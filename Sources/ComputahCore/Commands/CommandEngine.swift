@@ -17,6 +17,8 @@ public struct PreparedAction {
     var answer: String? = nil
     /// A Shortcuts library entry and its optional text input.
     var shortcut: (name: String, input: String?)? = nil
+    /// A saved routine's request, planned and verified again as a nested workflow.
+    var routine: (name: String, command: String)? = nil
     var interpretation: InterpretedCommand? = nil
     var captureSeconds: Double = 0
     var modelSeconds: Double = 0
@@ -26,7 +28,7 @@ public struct PreparedAction {
     var usage = ModelUsage()
 
     var hasExecutablePlan: Bool {
-        launch != nil || navigation != nil || candidate != nil || answer != nil || shortcut != nil || interpretation?.actionID == "already_satisfied"
+        launch != nil || navigation != nil || candidate != nil || answer != nil || shortcut != nil || routine != nil || interpretation?.actionID == "already_satisfied"
     }
 
     /// Workflow handles app launches and navigation. This sends one observed control action.
@@ -191,21 +193,55 @@ public struct CommandEngine {
         if interpreted.route == nil {
             return prepared(status: "No clear action requested.")
         }
+        // A memory route with no clear operation is usually a question about remembered facts.
+        if interpreted.route == .memory, interpreted.memoryAction != nil {
+            switch interpreted.memoryAction {
+            case .remember:
+                UserMemory.remember(interpreted.clause.text.trimmingCharacters(in: .whitespacesAndNewlines))
+                var result = prepared(description: "Remember"); result.answer = "Anotado."; return result
+            case .forget:
+                UserMemory.forgetAll()
+                var result = prepared(description: "Forget"); result.answer = "Esqueci o que você tinha pedido para lembrar."; return result
+            case .save_routine:
+                guard let name = interpreted.value?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+                    return prepared(status: "Say the routine's name, for example: salva isso como rotina fechamento.")
+                }
+                guard let last = UserMemory.lastCompleted else { return prepared(status: "No completed command to save yet.") }
+                UserMemory.saveRoutine(name, command: last)
+                var result = prepared(description: "Save routine"); result.answer = "Rotina \(name) salva."; return result
+            case .run_routine:
+                guard let name = interpreted.routine, let saved = UserMemory.routines[name] else {
+                    return prepared(status: "No saved routine matches the request.")
+                }
+                var result = prepared(description: "Run routine \(name)")
+                result.routine = (name, saved)
+                return result
+            case nil:
+                break
+            }
+        }
         if interpreted.route == .shortcut {
             guard let name = interpreted.shortcut else { return prepared(status: "No shortcut matches the request.") }
             var result = prepared(description: "Run shortcut \(name)")
             result.shortcut = (name, interpreted.value)
             return result
         }
-        if interpreted.route == .answer {
+        if interpreted.route == .answer || interpreted.route == .memory {
             guard let textModel = selector.textModel else {
                 return prepared(status: "Answering questions needs the OpenRouter text model.")
             }
             let start = Date()
+            // In a Chromium browser with remote debugging on, read the whole page, not only the viewport.
+            var page: BrowserPage.Page?
+            if let snapshot, let bundleID = snapshot.bundleID, BrowserPage.supports(bundleID) {
+                page = await BrowserPage.read(bundleID: bundleID, windowTitle: snapshot.windowTitle)
+            }
             let reply = try await textModel.answer([
                 "question": interpreted.clause.text, "original_request": command,
                 "app": snapshot?.appName ?? "Unknown",
+                "web_page": page.map { ["url": $0.url, "title": $0.title, "text": $0.text] } as Any? ?? NSNull(),
                 "observed_content": snapshot?.selectionEvidence ?? captureFailure ?? "No observation.",
+                "user_memory": UserMemory.facts,
                 "conversation_context": conversationContext])
             modelSeconds += Date().timeIntervalSince(start)
             var result = prepared(status: reply, description: "Answer")

@@ -21,7 +21,12 @@ extension App {
         case "observe":
             do {
                 let snapshot = try await Task.detached { try AXReader.capture(promptForPermission: false) }.value
-                return ["app": snapshot.appName, "text": snapshot.evidence]
+                var text = snapshot.evidence
+                if let bundleID = snapshot.bundleID, BrowserPage.supports(bundleID),
+                   let page = await BrowserPage.read(bundleID: bundleID, windowTitle: snapshot.windowTitle) {
+                    text += "\n\n[Full page via DevTools] \(page.title) — \(page.url)\n" + page.text
+                }
+                return ["app": snapshot.appName, "text": text]
             } catch {
                 return ["error": error.localizedDescription]
             }
