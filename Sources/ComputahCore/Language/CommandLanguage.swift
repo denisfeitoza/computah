@@ -188,7 +188,7 @@ struct CommandLanguage {
         let appOptions = apps.enumerated().map {
             // Compact catalog row: the name, plus aliases only when they add something.
             let extra = Set($0.element.aliases).subtracting([$0.element.name]).sorted()
-            return JevOption(id: "app\($0.offset)", description: $0.element.name + (extra.isEmpty ? "" : " (" + extra.joined(separator: ", ") + ")"))
+            return JevOption(id: "app\($0.offset)", description: "Installed app: " + $0.element.name + (extra.isEmpty ? "" : " (" + extra.joined(separator: ", ") + ")"))
         }
         // Multiple operations on one native control are one target, not competing targets.
         let byNode = Dictionary(grouping: controls, by: \.nodeID)

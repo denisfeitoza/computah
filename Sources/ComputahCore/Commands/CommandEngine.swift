@@ -198,8 +198,17 @@ public struct CommandEngine {
             return prepared(status: "Goal relationship: " + relationship.rawValue)
         }
         if interpreted.activatesApp {
-            guard let app = interpreted.app else { return prepared(status: "The requested app is unclear or unavailable.") }
-            return prepared(launch: app, description: "Open \(app.name)")
+            if let app = interpreted.app { return prepared(launch: app, description: "Open \(app.name)") }
+            // No installed app has that name: the user may mean a website with the same name.
+            if let textModel = selector.textModel,
+               let address = try? await textModel.compose([
+                   "original_request": command, "active_instruction": interpreted.clause.text,
+                   "selected_field": "The https web address of the website or web app the user names. Return null if no well-known website matches.",
+               ]),
+               let url = CommandLanguage.validatedURL(address.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return prepared(navigation: url, description: "Visit \(url.absoluteString)")
+            }
+            return prepared(status: "The requested app is unclear or unavailable.")
         }
         if interpreted.route == nil {
             return prepared(status: "No clear action requested.")
