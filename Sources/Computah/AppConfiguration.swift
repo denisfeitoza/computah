@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 extension App {
     var recordsDiagnostics: Bool { LaunchOptions.current.contains("--record-diagnostics") }
@@ -25,7 +26,31 @@ extension App {
         return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }
 
+    /// Keychain first (service names below), then the ignored project-root `.env`.
     func credential(_ name: String) -> String? {
+        let services = ["TYPESAFE_API_KEY": "typesafe-api", "OPENROUTER_API_KEY": "openrouter-api",
+                        "DEEPGRAM_API_KEY": "deepgram-api"]
+        if let service = services[name], let value = Self.keychain(service) { return value }
+        return dotenv(name)
+    }
+
+    /// Non-secret settings: process environment, then `.env`.
+    func setting(_ name: String) -> String? {
+        if let value = ProcessInfo.processInfo.environment[name], !value.isEmpty { return value }
+        return dotenv(name)
+    }
+
+    static func keychain(_ service: String) -> String? {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                    kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data,
+              let value = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return value
+    }
+
+    private func dotenv(_ name: String) -> String? {
         guard let content = try? String(contentsOf: root.appendingPathComponent(".env"), encoding: .utf8) else { return nil }
         for line in content.components(separatedBy: .newlines) {
             let pieces = line.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)

@@ -31,10 +31,17 @@ public enum AXReader {
         throw AXFailure.noWindow
     }
 
+    /// Setting the system-wide element's timeout changes the default for every element,
+    /// including application and parent elements. A hung app then costs 0.5 s per call, not 6 s.
+    private static let globalMessagingTimeout: Void = {
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.5)
+    }()
+
     public static func capture(maxNodes: Int = 1_500, seconds: TimeInterval = 1.5,
                                allChildren: Bool = false, pid requestedPID: pid_t? = nil,
                                promptForPermission: Bool = true, subtree: AXUIElement? = nil) throws -> AXSnapshot {
         let started = Date()
+        _ = globalMessagingTimeout
         guard AXIsProcessTrusted() else {
             if promptForPermission {
                 _ = AXIsProcessTrustedWithOptions(

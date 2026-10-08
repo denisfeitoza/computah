@@ -14,7 +14,7 @@ from html.parser import HTMLParser
 from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = ROOT / "outputs/Computah.app/Contents/MacOS/Computah"
+APP = Path(os.environ.get("COMPUTAH_APP_DIR", Path.home() / "Applications/Computah.app")) / "Contents/MacOS/Computah"
 
 
 class NoteText(HTMLParser):
@@ -93,7 +93,7 @@ class SpeechToAppTests(unittest.TestCase):
         data = json.loads(report.read_text())
         self.assertEqual(data.get("diagnosticOutcome"), "completed", "The command was not confirmed")
         self.assertTrue(any(event.get("payload", {}).get("event") == "EndOfTurn"
-                            for event in data.get("speechEvents", [])), "No final Deepgram turn")
+                            for event in data.get("speechEvents", [])), "No final speech turn")
         results = data.get("results", [])
         self.assertTrue(results and results[-1].get("complete") is True, "No completed workflow")
         self.assertTrue(any(result.get("usage", {}).get("requests", 0) > 0 for result in results),
@@ -186,7 +186,7 @@ class SpeechToAppTests(unittest.TestCase):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true",
-                        help="Authorize real Deepgram/Jev requests, app input, and local diagnostic files")
+                        help="Authorize real model requests, app input, and local diagnostic files")
     cases = {"notes": "test_notes_create_and_type", "textedit": "test_textedit_create_and_type",
              "spotify": "test_spotify_play_song", "discord": "test_discord_general_channel",
              "chrome": "test_chrome_google_search"}

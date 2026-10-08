@@ -44,6 +44,7 @@ public struct JevSelector {
     public let apiKey: String
     public let model: String
     public var endpoint = URL(string: "https://api.typesafe.ai/v1/systemone")!
+    public var backend: ChoiceBackend = .typesafe
     public var traceDirectory: URL? = nil
     var usage = ModelUsageTracker()
     public var costs: JevCosts? = nil
@@ -174,20 +175,26 @@ public struct JevSelector {
 
     private func send(state: [String: Any], questions: [String: Any], chunks: [[JevOption]], keys: [String], usage callUsage: ModelUsageTracker) async throws -> [Answer] {
         try Task.checkCancellation()
-        guard !apiKey.isEmpty else { throw JevFailure.invalid("Add TYPESAFE_API_KEY to the project-root .env file.") }
-        let body: [String: Any] = ["model": model, "state": state, "questions": questions]
+        guard !apiKey.isEmpty else {
+            throw JevFailure.invalid(backend == .typesafe ? "Add the TypeSafe key (Keychain service typesafe-api)."
+                                                          : "Add the OpenRouter key (Keychain service openrouter-api).")
+        }
+        let body: [String: Any] = backend == .typesafe
+            ? ["model": model, "state": state, "questions": questions]
+            : OpenRouterChoice.body(model: model, state: state, questions: questions)
         // Keep identical semantic inputs in the same wire order across processes.
         let data = try JSONSerialization.data(withJSONObject: SensitiveText.json(body), options: [.sortedKeys])
         guard data.count < 180_000 else { throw JevFailure.contextLimit }
-        var request = URLRequest(url: endpoint)
+        var request = URLRequest(url: backend == .typesafe ? endpoint : OpenRouterChoice.endpoint)
         request.httpMethod = "POST"
-        request.timeoutInterval = 5
+        // A chat model needs more time than the System One endpoint.
+        request.timeoutInterval = backend == .typesafe ? 5 : 15
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = data
         for attempt in 0..<2 {
             try Task.checkCancellation()
-            let responseData: Data
+            var responseData: Data
             let response: URLResponse
             let costTicket = costs?.beginRequest()
             usage.beginRequest()
@@ -203,12 +210,23 @@ public struct JevSelector {
                 if let transport = error as? URLError, transport.code == .cancelled { throw error }
                 throw JevFailure.invalid("Jev interpretation request failed after \(attempt + 1) attempt(s): \(error.localizedDescription)")
             }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if backend == .openRouter, status == 200 {
+                guard let shaped = OpenRouterChoice.jevShaped(responseData, questions: questions) else {
+                    if attempt == 0 { continue }
+                    throw JevFailure.invalid("OpenRouter returned two replies that did not match the Choice schema.")
+                }
+                responseData = shaped.0
+            }
+            if backend == .openRouter, status == 429 || status >= 500, attempt == 0 {
+                try await Task.sleep(nanoseconds: 400_000_000)
+                continue
+            }
             let payload = (try? JSONSerialization.jsonObject(with: responseData)) as? [String: Any]
             let reportedTokens = (payload?["usage"] as? [String: Any])?["input_tokens"] as? Int
             costs?.received(costTicket, model: payload?["model"] as? String ?? model, inputTokens: reportedTokens)
             usage.received(inputTokens: reportedTokens)
             callUsage.received(inputTokens: reportedTokens)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             if let traceDirectory {
                 if let responseObject = try? JSONSerialization.jsonObject(with: responseData),
                    let trace = try? JSONSerialization.data(withJSONObject: SensitiveText.json([
@@ -219,9 +237,15 @@ public struct JevSelector {
                 }
             }
             guard status == 200 else {
-                if status == 400, String(decoding: responseData, as: UTF8.self).contains("max_tokens_exceeded") {
+                let detail = String(decoding: responseData, as: UTF8.self)
+                if status == 400, detail.contains("max_tokens_exceeded") || detail.contains("context length") {
                     throw JevFailure.contextLimit
                 }
+                if status == 413 { throw JevFailure.contextLimit }
+                if status == 401 || status == 403 {
+                    throw JevFailure.invalid("The \(backend == .typesafe ? "TypeSafe" : "OpenRouter") key was rejected (HTTP \(status)). Rotate it in Keychain.")
+                }
+                if status == 402 { throw JevFailure.invalid("OpenRouter reports no credit left (HTTP 402).") }
                 throw JevFailure.service(status)
             }
             do {

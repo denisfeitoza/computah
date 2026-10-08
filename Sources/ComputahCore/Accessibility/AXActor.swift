@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon
 import Foundation
 
 public enum AXActor {
@@ -167,18 +168,34 @@ public enum AXActor {
             try validateBinding(candidate, snapshot: snapshot)
             try validateNativeSurface(element, snapshot: snapshot)
             if candidate.operation == .replaceText {
-                guard AXReader.string(element, "AXValue") == original.value else { throw AXFailure.changed }
-                guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
-                      let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else { throw AXFailure.changed }
-                down.flags = .maskCommand; up.flags = .maskCommand
-                try permit.pair(down: { down.post(tap: .cghidEventTap) }, up: { up.post(tap: .cghidEventTap) })
+                // Capture keeps a 2,000-character prefix; compare the same prefix of the live value.
+                let live = AXReader.string(element, "AXValue")
+                guard String(live.prefix(2_000)) == original.value else { throw AXFailure.changed }
+                let liveLength = (live as NSString).length
+                // Select through Accessibility. A fixed Cmd+key code is layout-dependent
+                // (virtual key 0 is "Q" on AZERTY, so Cmd+0 can quit the target app).
+                var whole = CFRange(location: 0, length: liveLength)
+                guard let wholeRange = AXValueCreate(.cfRange, &whole) else { throw AXFailure.changed }
+                var canSelect = DarwinBoolean(false)
+                if AXUIElementIsAttributeSettable(element, "AXSelectedTextRange" as CFString, &canSelect) == .success,
+                   canSelect.boolValue {
+                    _ = try permit.perform { AXUIElementSetAttributeValue(element, "AXSelectedTextRange" as CFString, wholeRange) }
+                } else {
+                    guard let keyA = keyCode(for: "a"),
+                          let down = CGEvent(keyboardEventSource: nil, virtualKey: keyA, keyDown: true),
+                          let up = CGEvent(keyboardEventSource: nil, virtualKey: keyA, keyDown: false) else {
+                        throw AXFailure.unavailable("Could not select the existing field text; replacement was not typed.")
+                    }
+                    down.flags = .maskCommand; up.flags = .maskCommand
+                    try permit.pair(down: { down.post(tap: .cghidEventTap) }, up: { up.post(tap: .cghidEventTap) })
+                }
                 let selected = try poll(10, permit: permit) {
                     guard isFocused(element, app: app) else { throw AXFailure.changed }
                     let focused = AXReader.attributeElement(app, kAXFocusedUIElementAttribute as String)
                     guard let rangeValue = AXReader.axValue(AXReader.attribute(focused ?? element, "AXSelectedTextRange")) else { return false }
                     var range = CFRange()
                     return AXValueGetValue(rangeValue, .cfRange, &range) && range.location == 0
-                        && range.length == (original.value as NSString).length
+                        && range.length == liveLength
                 }
                 guard selected else { throw AXFailure.unavailable("Could not verify selection of the existing field text; replacement was not typed.") }
             }
@@ -276,6 +293,25 @@ public enum AXActor {
             Thread.sleep(forTimeInterval: 0.02)
         }
         return false
+    }
+
+    /// The virtual key that produces `character` in the current keyboard layout, if any.
+    private static func keyCode(for character: Character) -> CGKeyCode? {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let pointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
+        let data = Unmanaged<CFData>.fromOpaque(pointer).takeUnretainedValue() as Data
+        return data.withUnsafeBytes { raw -> CGKeyCode? in
+            guard let layout = raw.baseAddress?.assumingMemoryBound(to: UCKeyboardLayout.self) else { return nil }
+            for code in 0..<128 {
+                var deadKeys: UInt32 = 0
+                var length = 0
+                var chars = [UniChar](repeating: 0, count: 4)
+                let status = UCKeyTranslate(layout, UInt16(code), UInt16(kUCKeyActionDisplay), 0, UInt32(LMGetKbdType()),
+                                            OptionBits(kUCKeyTranslateNoDeadKeysBit), &deadKeys, chars.count, &length, &chars)
+                if status == noErr, length == 1, Character(UnicodeScalar(chars[0]) ?? " ") == character { return CGKeyCode(code) }
+            }
+            return nil
+        }
     }
 
     private static func isFocused(_ element: AXUIElement, app: AXUIElement) -> Bool {

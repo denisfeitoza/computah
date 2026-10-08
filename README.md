@@ -2,6 +2,17 @@
 
 # Computah
 
+> **Fork notes (denisfeitoza/computah).** An experimental "full power" branch for a test Mac.
+> - **Local speech, Portuguese by default.** Parakeet TDT v3 runs on the Neural Engine through
+>   [FluidAudio](https://github.com/FluidInference/FluidAudio). No Deepgram key. The first start downloads the model (about 600 MB).
+> - **Pluggable decision backend.** TypeSafe Jev when a TypeSafe key exists, otherwise an OpenRouter chat model
+>   that answers the same Choice questions through a strict JSON schema.
+> - **Keys in Keychain:** `security add-generic-password -a "$USER" -s openrouter-api -w` (and `typesafe-api`).
+> - **Built outside iCloud:** `zsh scripts/build.sh` writes `~/Applications/Computah.app`.
+>   Create a "Computah Dev" code-signing certificate so permissions survive rebuilds.
+> - No confirmation step before actions. Use this fork only on a machine you are willing to let it change.
+
+
 An experimental project to learn about TypeSafe's Jev.
 
 Control your Mac with your voice.

@@ -1,5 +1,6 @@
 import AppKit
 import ComputahCore
+import FluidAudio
 
 @MainActor final class App: NSObject, NSApplicationDelegate {
     let voice = Voice()
@@ -16,11 +17,26 @@ import ComputahCore
     var typedTurnID = UUID().uuidString
     var appBeforeReview: NSRunningApplication?
     lazy var jevCosts = JevCostStore(file: root.appendingPathComponent("outputs/computah/jev-costs.json"))
-    lazy var engine: CommandEngine = {
-        var selector = JevSelector(apiKey: credential("TYPESAFE_API_KEY") ?? "")
+    lazy var engine: CommandEngine = CommandEngine(selector: makeSelector())
+
+    /// TypeSafe Jev when its key exists (fastest), otherwise an OpenRouter chat model.
+    /// `COMPUTAH_DECISION=jev|openrouter` forces one backend.
+    func makeSelector() -> JevSelector {
+        let typesafe = credential("TYPESAFE_API_KEY")
+        let forced = setting("COMPUTAH_DECISION")?.lowercased()
+        var selector: JevSelector
+        if forced == "jev" || (forced != "openrouter" && typesafe != nil) {
+            selector = JevSelector(apiKey: typesafe ?? "", model: setting("COMPUTAH_JEV_MODEL") ?? "jev-1.13.0")
+        } else {
+            selector = JevSelector(apiKey: credential("OPENROUTER_API_KEY") ?? "",
+                                   model: setting("COMPUTAH_DECISION_MODEL") ?? "anthropic/claude-haiku-5.5")
+            selector.backend = .openRouter
+        }
         selector.costs = jevCosts.tracker
-        return CommandEngine(selector: selector)
-    }()
+        return selector
+    }
+
+    var hasDecisionKey: Bool { credential("TYPESAFE_API_KEY") != nil || credential("OPENROUTER_API_KEY") != nil }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         if startDiagnosticIfRequested() { return }
@@ -79,15 +95,10 @@ import ComputahCore
 
     func toggleVoice() {
         if voice.isListening { discardPreparation(); voice.stop(); return }
-        guard let key = credential("DEEPGRAM_API_KEY") else {
-            status = "Add DEEPGRAM_API_KEY to the project-root .env file."
-            refresh()
-            showReview()
-            return
-        }
         transcript = ""
         coordinator.beginTurn("listening:" + UUID().uuidString)
-        voice.start(key: key)
+        voice.language = Language(rawValue: setting("COMPUTAH_SPEECH_LANGUAGE") ?? "pt")
+        voice.start()
     }
 
     func discardPreparation() { coordinator.discardEager() }
@@ -118,7 +129,7 @@ import ComputahCore
     func refresh() {
         listeningSounds?.update(listening: voice.isListening)
         notch?.update(listening: voice.isListening, transcript: transcript,
-                      needsSetup: credential("DEEPGRAM_API_KEY") == nil || credential("TYPESAFE_API_KEY") == nil)
+                      needsSetup: !hasDecisionKey)
         debugState.update(status: status, transcript: transcript,
                           listening: voice.isListening, running: running)
     }

@@ -57,9 +57,6 @@ extension App {
             guard !pcm.isEmpty, pcm.count % 2 == 0, pcm.count <= 16_000 * 2 * 60 else {
                 throw AXFailure.unavailable("Audio diagnostic requires at most 60 seconds of raw 16 kHz mono PCM16.")
             }
-            guard let key = credential("DEEPGRAM_API_KEY"), !key.isEmpty, !key.contains("\n") else {
-                throw AXFailure.unavailable("Missing Deepgram credential.")
-            }
             let started = Date()
             var results: [WorkflowResult] = []
             var turns = DiagnosticTurns()
@@ -119,7 +116,7 @@ extension App {
                     ScenarioStatus(seconds: Date().timeIntervalSince(started), message: message, running: active))
                 if !active { finishIfReady() }
             }
-            voice.start(key: key, diagnosticPCM: pcm)
+            voice.start(diagnosticPCM: pcm)
             starting = false
             Task {
                 try? await Task.sleep(nanoseconds: diagnosticTimeoutNanoseconds)

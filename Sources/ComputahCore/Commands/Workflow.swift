@@ -50,6 +50,8 @@ struct OutcomeJudgment {
 }
 
 extension CommandEngine {
+    static let turnTimeLimit: TimeInterval = 90
+
     static func failureStatus(_ error: Error, didDispatch: Bool) -> String {
         "Stopped: \(error.localizedDescription) " + (didDispatch
             ? "Input was dispatched; some effects may be partial or unconfirmed. Check the app before repeating."
@@ -108,10 +110,13 @@ extension CommandEngine {
         var cursor = resume.cursor
         var completed = resume.verified.count
         var verifiedProgress = resume.verified
+        // One utterance must not keep the Mac busy indefinitely when the model stalls or loops.
+        let deadline = started.addingTimeInterval(Self.turnTimeLimit)
         do {
             while cursor < (command as NSString).length {
                 try inputPermit.check()
                 guard completed < 32 else { return result("Stopped at the instruction limit.", false) }
+                guard Date() < deadline else { return result("Stopped at the \(Int(Self.turnTimeLimit))-second command limit.", false) }
                 let initial: PreparedAction
                 if usePreparedFirst, cursor == 0, let preparedFirst, preparedFirst.interpretation?.source == command,
                     preparedFirst.interpretation?.clause.startUTF16 == 0
@@ -139,6 +144,7 @@ extension CommandEngine {
                 var recoveredBeforeDispatch = false
                 var recoveryBinding = checkpoint.read().noInputBinding
                 for attempt in 0..<6 {
+                    guard Date() < deadline else { return result("Stopped at the \(Int(Self.turnTimeLimit))-second command limit.", false) }
                     let attemptStart = Date()
                     let prepared: PreparedAction
                     if attempt == 0 {

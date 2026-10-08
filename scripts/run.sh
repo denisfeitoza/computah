@@ -12,4 +12,4 @@ fi
 zsh "$project_dir/scripts/build.sh"
 args=(--root "$project_dir")
 if [[ "${1:-}" == --record-diagnostics ]]; then args+=(--record-diagnostics); fi
-open "$project_dir/outputs/Computah.app" --args "${args[@]}"
+open "${COMPUTAH_APP_DIR:-$HOME/Applications/Computah.app}" --args "${args[@]}"
