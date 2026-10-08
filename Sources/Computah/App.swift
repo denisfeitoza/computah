@@ -8,6 +8,7 @@ import FluidAudio
     let speech = AVSpeechSynthesizer()
     var credentialCache: [String: String?] = [:]
     var controlServer: ControlServer?
+    var statusMenu: StatusMenu?
     var remoteResult: CheckedContinuation<WorkflowResult, Never>?
     var notch: NotchController?
     var listeningSounds: ListeningSounds?
@@ -71,6 +72,10 @@ import FluidAudio
         listeningSounds = ListeningSounds()
         notch.toggle = { [weak self] in self?.toggleVoice() }
         notch.debug = { [weak self] in self?.showReview() }
+        let statusMenu = StatusMenu()
+        statusMenu.toggle = { [weak self] in self?.toggleVoice() }
+        statusMenu.debug = { [weak self] in self?.showReview() }
+        self.statusMenu = statusMenu
         connectVoiceCallbacks(source: .microphone)
         shortcut = ListenShortcut { [weak self] in self?.toggleVoice() }
         notch.show()
@@ -155,6 +160,7 @@ import FluidAudio
         listeningSounds?.update(listening: voice.isListening)
         notch?.update(listening: voice.isListening, transcript: transcript,
                       needsSetup: !hasDecisionKey)
+        statusMenu?.update(listening: voice.isListening, status: status)
         debugState.update(status: status, transcript: transcript,
                           listening: voice.isListening, running: running)
     }
