@@ -8,7 +8,7 @@
 > - **Pluggable decision backend.** TypeSafe Jev when a TypeSafe key exists, otherwise an OpenRouter chat model
 >   that answers the same Choice questions through a strict JSON schema.
 > - **Keys in Keychain:** `security add-generic-password -a "$USER" -s openrouter-api -w` (and `typesafe-api`).
-> - **Built outside iCloud:** `zsh scripts/build.sh` writes `~/Applications/Computah.app`.
+> - **Built outside iCloud:** `zsh scripts/build.sh` writes `/Applications/Computah.app`.
 >   Create a "Computah Dev" code-signing certificate so permissions survive rebuilds.
 > - **Writes text you describe.** "Responde dizendo que chego às 10" types a composed reply: a small OpenRouter model
 >   (`inception/mercury-2.5` by default, `COMPUTAH_TEXT_MODEL`) writes values that were not dictated word for word.
@@ -165,7 +165,7 @@ Build and open the app:
 zsh scripts/run.sh
 ```
 
-In **System Settings → Privacy & Security → Accessibility**, add and enable `~/Applications/Computah.app`.
+In **System Settings → Privacy & Security → Accessibility**, add and enable `/Applications/Computah.app`.
 Allow microphone access when you first start listening.
 The app appears at the top of your screen.
 
@@ -194,7 +194,7 @@ It does not save command history unless you enable [diagnostic saving](docs/PRIV
 ## Build and change it
 
 ```sh
-zsh scripts/build.sh     # Build ~/Applications/Computah.app.
+zsh scripts/build.sh     # Build /Applications/Computah.app.
 zsh scripts/run.sh       # Build and open the app. Quit any running copy first.
 ```
 

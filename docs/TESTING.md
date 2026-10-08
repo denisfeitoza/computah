@@ -51,7 +51,7 @@ They can send private app content to providers.
 Use them only with explicit permission and an idle, unlocked Mac.
 
 1. Add the OpenRouter key to Keychain (service `openrouter-api`) or `OPENROUTER_API_KEY` to `.env`.
-2. Enable Accessibility access for `~/Applications/Computah.app`.
+2. Enable Accessibility access for `/Applications/Computah.app`.
 3. Open the apps for the selected tests. Sign in where required.
 4. Pause Spotify before its test.
 5. In Discord, select a server with a visible general text channel. Open a different channel in that server.
@@ -123,7 +123,7 @@ If someone starts using the Mac during the test, stop the test.
 A result from the wrong app does not count as success.
 
 Build first.
-The executable is `~/Applications/Computah.app/Contents/MacOS/Computah`.
+The executable is `/Applications/Computah.app/Contents/MacOS/Computah`.
 Pass `--root "$PWD"` when you run it from the project folder.
 Keep reports and captures under ignored `outputs/`.
 

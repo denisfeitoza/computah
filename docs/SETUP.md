@@ -7,7 +7,7 @@ Use a Swift 6 toolchain on macOS 14 or later.
 The package uses Swift 5 language mode.
 Run `python3 --version` to check Python.
 
-The build creates `~/Applications/Computah.app` (outside iCloud-synced folders).
+The build creates `/Applications/Computah.app` (outside iCloud-synced folders).
 This is a local developer build.
 It is not a signed installer for general distribution.
 
@@ -15,7 +15,7 @@ It is not a signed installer for general distribution.
 
 If Computah cannot read or act on an app, open System Settings.
 Go to **Privacy & Security → Accessibility**.
-Add `~/Applications/Computah.app` and enable it.
+Add `/Applications/Computah.app` and enable it.
 
 Microphone permission is needed only for voice input.
 Start listening to request permission.

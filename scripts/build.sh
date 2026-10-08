@@ -9,13 +9,24 @@ cd "$project_dir"
 swift build -c release
 # iCloud-synced folders (Desktop & Documents) re-attach Finder metadata that breaks codesign.
 # Build the bundle outside them by default; COMPUTAH_APP_DIR overrides the location.
-app_dir="${COMPUTAH_APP_DIR:-$HOME/Applications/Computah.app}"
+app_dir="${COMPUTAH_APP_DIR:-/Applications/Computah.app}"
 # Replace generated resources so files from older builds cannot survive a rebuild.
 rm -rf "$app_dir/Contents/Resources"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
 cp .build/release/Computah "$app_dir/Contents/MacOS/Computah"
 ditto .build/release/Computah_ComputahCore.bundle "$app_dir/Contents/Resources/Computah_ComputahCore.bundle"
 ditto .build/release/Computah_Computah.bundle "$app_dir/Contents/Resources/Computah_Computah.bundle"
+# App icon from the project logo (cached in .build).
+icon=".build/AppIcon.icns"
+if [[ ! -f "$icon" || docs/images/computah.png -nt "$icon" ]]; then
+  iconset="$(mktemp -d)/AppIcon.iconset"; mkdir -p "$iconset"
+  for size in 16 32 128 256 512; do
+    sips -z $size $size docs/images/computah.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
+    sips -z $((size * 2)) $((size * 2)) docs/images/computah.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+  done
+  iconutil -c icns "$iconset" -o "$icon"
+fi
+cp "$icon" "$app_dir/Contents/Resources/AppIcon.icns"
 python3 - "$app_dir/Contents/Info.plist" "$project_dir" <<'PY'
 import plistlib, sys
 with open(sys.argv[1], 'wb') as output:
@@ -24,6 +35,7 @@ with open(sys.argv[1], 'wb') as output:
         'CFBundleName': 'Computah',
         'CFBundleDisplayName': 'Computah',
         'CFBundleExecutable': 'Computah',
+        'CFBundleIconFile': 'AppIcon',
         'CFBundlePackageType': 'APPL',
         'LSUIElement': True,
         'NSHighResolutionCapable': True,

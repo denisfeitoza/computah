@@ -14,7 +14,7 @@ from html.parser import HTMLParser
 from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = Path(os.environ.get("COMPUTAH_APP_DIR", Path.home() / "Applications/Computah.app")) / "Contents/MacOS/Computah"
+APP = Path(os.environ.get("COMPUTAH_APP_DIR", "/Applications/Computah.app")) / "Contents/MacOS/Computah"
 
 
 class NoteText(HTMLParser):
