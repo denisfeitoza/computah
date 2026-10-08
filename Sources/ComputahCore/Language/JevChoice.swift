@@ -150,7 +150,11 @@ public struct JevSelector {
                 return observed
             }
         }
-        if !observedControls.isEmpty { requestState["available_controls"] = observedControls }
+        // The action question already carries each control's full description. Other questions in
+        // the same request only need to know which controls exist, so send a short line per control.
+        if !observedControls.isEmpty {
+            requestState["available_controls"] = observedControls.map { String($0.split(separator: "\n").last?.prefix(110) ?? "") }
+        }
         do {
             let result = try await send(state: requestState, questions: wire, chunks: questions.map(\.options), keys: wireKeys, usage: callUsage)
             return JevJudgments(ids: result.map { $0.choice == "none_here" ? nil : $0.choice },

@@ -127,6 +127,7 @@ struct CommandLanguage {
             "source_tokens": tokens.enumerated().map { ["id": "t\($0.offset)", "text": $0.element.modelText,
                 "start_utf16": $0.element.range.location, "end_utf16": NSMaxRange($0.element.range)] as [String: Any] }]
         if !conversationContext.isEmpty { state["conversation_context"] = conversationContext }
+        state["planning_rules"] = LanguagePrompts.text("premise")
         let facts = UserMemory.facts
         let routineNames = UserMemory.routines.keys.sorted()
         if !facts.isEmpty { state["user_memory"] = facts }
@@ -154,9 +155,11 @@ struct CommandLanguage {
                 (index + 1 < tokens.count ? "; next: \(tokens[index + 1].modelText)" : "; end of request"))
         }
         func question(_ key: String, _ options: [JevOption]) -> JevQuestion {
-            JevQuestion(instructions: (key == "action" ? "" : LanguagePrompts.text("premise") + "\n") + LanguagePrompts.text(key), options: options,
+            // The shared planning premise travels once in state.planning_rules, not in every question.
+            JevQuestion(instructions: (key == "action" ? "" : "Apply state.planning_rules.\n") + LanguagePrompts.text(key), options: options,
                         noneDescription: key == "action" ? LanguagePrompts.text("action_none") : nil,
-                        optionBudget: key == "action" ? 64 : 254, key: key)
+                        // One table of every observed control: splitting at 64 cost two extra sequential requests.
+                        optionBudget: 254, key: key)
         }
         func valueQuestions() -> [JevQuestion] {
             [question("format", ValueFormat.allCases.map {
@@ -183,7 +186,9 @@ struct CommandLanguage {
             }
         }
         let appOptions = apps.enumerated().map {
-            JevOption(id: "app\($0.offset)", description: "Activate installed app: \($0.element.name); aliases=\(Set($0.element.aliases).subtracting([$0.element.name]).sorted().joined(separator: ", ")); bundle=\($0.element.bundleID)")
+            // Compact catalog row: the name, plus aliases only when they add something.
+            let extra = Set($0.element.aliases).subtracting([$0.element.name]).sorted()
+            return JevOption(id: "app\($0.offset)", description: $0.element.name + (extra.isEmpty ? "" : " (" + extra.joined(separator: ", ") + ")"))
         }
         // Multiple operations on one native control are one target, not competing targets.
         let byNode = Dictionary(grouping: controls, by: \.nodeID)
