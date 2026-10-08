@@ -80,11 +80,15 @@ import FluidAudio
         let statusMenu = StatusMenu()
         statusMenu.toggle = { [weak self] in self?.toggleVoice() }
         statusMenu.debug = { [weak self] in self?.showReview() }
+        statusMenu.wakeWord = { [weak self] in self?.toggleWakeWord() }
+        statusMenu.isWakeWordOn = { [weak self] in self?.wakeWordMode ?? false }
         self.statusMenu = statusMenu
         connectVoiceCallbacks(source: .microphone)
         shortcut = ListenShortcut { [weak self] in self?.toggleVoice() }
         notch.show()
         Voice.preload()
+        if wakeWordMode { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            if self?.voice.isListening == false { self?.toggleVoice() } } }
         let server = ControlServer { [weak self] tool, arguments in
             await self?.handleRemote(tool, arguments) ?? ["error": "Computah is closing."]
         }
@@ -95,8 +99,8 @@ import FluidAudio
 
     /// Both microphone UI and explicit audio diagnostics use this wiring.
     func connectVoiceCallbacks(source: InputSource, status: ((String) -> Void)? = nil) {
-        voice.onText = { [weak self] text, final, turnID in
-            guard let self else { return }
+        voice.onText = { [weak self] spoken, final, turnID in
+            guard let self, let text = command(from: spoken) else { return }
             transcript = text
             refresh()
             coordinator.beginTurn(turnID)
@@ -105,8 +109,15 @@ import FluidAudio
                 coordinator.submit(text, turn: turnID)
             }
         }
-        voice.onTurnBegan = { [weak self] id in self?.coordinator.beginTurn(id) }
-        voice.onEager = { [weak self] text, id in self?.coordinator.prepareEager(text, turn: id) }
+        voice.onTurnBegan = { [weak self] id in
+            // In wake-word mode, speech is ignored until a transcript starts with the wake word.
+            guard self?.wakeWordMode == false else { return }
+            self?.coordinator.beginTurn(id)
+        }
+        voice.onEager = { [weak self] spoken, id in
+            guard let self, let text = command(from: spoken) else { return }
+            coordinator.prepareEager(text, turn: id)
+        }
         voice.onInputLost = { [weak self] in
             self?.coordinator.beginTurn("audio-loss:" + UUID().uuidString)
         }
@@ -129,6 +140,35 @@ import FluidAudio
     }
 
     func discardPreparation() { coordinator.discardEager() }
+
+    /// Always-on listening that only acts on requests that start with "Computa…" ("Ei, Computah, …").
+    var wakeWordMode: Bool {
+        get { UserDefaults.standard.bool(forKey: "wakeWordMode") }
+        set { UserDefaults.standard.set(newValue, forKey: "wakeWordMode") }
+    }
+
+    func toggleWakeWord() {
+        wakeWordMode.toggle()
+        if wakeWordMode, !voice.isListening { toggleVoice() }
+        status = wakeWordMode ? "Escuta contínua: diga \"Computa, …\"" : "Escuta contínua desligada"
+        refresh()
+    }
+
+    /// The request to run, or nil when wake-word mode is on and the transcript does not address Computah.
+    func command(from spoken: String) -> String? {
+        guard wakeWordMode else { return spoken }
+        let words = spoken.split(whereSeparator: { $0.isWhitespace })
+        // Use the last mention: a pause can merge earlier conversation into the same transcript.
+        for (index, word) in words.enumerated().reversed() {
+            let folded = word.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+                .trimmingCharacters(in: .punctuationCharacters)
+            guard folded.hasPrefix("comput") else { continue }
+            let rest = words.dropFirst(index + 1).joined(separator: " ")
+                .trimmingCharacters(in: CharacterSet.whitespaces.union(.punctuationCharacters))
+            return rest.isEmpty ? nil : rest
+        }
+        return nil
+    }
 
     /// Reads answers aloud. The voice follows the speech language setting.
     func speak(_ text: String) {

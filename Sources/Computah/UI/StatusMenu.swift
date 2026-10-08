@@ -9,6 +9,9 @@ import AppKit
     private let listenItem = NSMenuItem(title: "", action: #selector(toggleListening), keyEquivalent: "")
     var toggle: (() -> Void)?
     var debug: (() -> Void)?
+    var wakeWord: (() -> Void)?
+    var isWakeWordOn: () -> Bool = { false }
+    private let wakeItem = NSMenuItem(title: "Escuta contínua (diga \"Computa, …\")", action: #selector(toggleWakeWord), keyEquivalent: "")
 
     override init() {
         super.init()
@@ -17,7 +20,9 @@ import AppKit
         let debugItem = NSMenuItem(title: "Abrir Debug Mode (comandos digitados)…", action: #selector(openDebug), keyEquivalent: "d")
         debugItem.target = self
         let quit = NSMenuItem(title: "Encerrar Computah", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        for entry in [statusLine, .separator(), listenItem, debugItem, .separator(), quit] { menu.addItem(entry) }
+        wakeItem.target = self
+        for entry in [statusLine, .separator(), listenItem, wakeItem, debugItem, .separator(), quit] { menu.addItem(entry) }
+        menu.delegate = self
         item.menu = menu
         update(listening: false, status: "Pronto")
     }
@@ -30,6 +35,8 @@ import AppKit
         statusLine.title = String(status.prefix(80))
     }
 
+    func menuWillOpen(_ menu: NSMenu) { wakeItem.state = isWakeWordOn() ? .on : .off }
+    @objc private func toggleWakeWord() { wakeWord?() }
     @objc private func toggleListening() { toggle?() }
     @objc private func openDebug() { debug?() }
 }
