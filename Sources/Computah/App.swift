@@ -1,9 +1,11 @@
 import AppKit
+import AVFoundation
 import ComputahCore
 import FluidAudio
 
 @MainActor final class App: NSObject, NSApplicationDelegate {
     let voice = Voice()
+    let speech = AVSpeechSynthesizer()
     var notch: NotchController?
     var listeningSounds: ListeningSounds?
     var shortcut: ListenShortcut?
@@ -32,6 +34,9 @@ import FluidAudio
                                    model: setting("COMPUTAH_DECISION_MODEL") ?? "anthropic/claude-haiku-5.5")
             selector.backend = .openRouter
         }
+        if let openRouter = credential("OPENROUTER_API_KEY") {
+            selector.textModel = TextModel(apiKey: openRouter, model: setting("COMPUTAH_TEXT_MODEL") ?? "inception/mercury-2.5")
+        }
         selector.costs = jevCosts.tracker
         return selector
     }
@@ -45,6 +50,7 @@ import FluidAudio
         }
         coordinator.onResult = { [weak self] result, current in
             guard let self else { return }
+            if result.events.contains(where: { $0.action.hasPrefix("Answer") }) { speak(result.status) }
             let last = result.events.last
             record(RunRecord(command: result.command, status: result.status,
                 observation: last?.after.isEmpty == false ? last?.after : last?.before,
@@ -91,6 +97,7 @@ import FluidAudio
             self?.refresh()
         }
         voice.onLevel = { [weak self] level in self?.notch?.audioLevel(level) }
+        voice.isSuppressed = { [weak self] in self?.speech.isSpeaking == true }
     }
 
     func toggleVoice() {
@@ -102,6 +109,14 @@ import FluidAudio
     }
 
     func discardPreparation() { coordinator.discardEager() }
+
+    /// Reads answers aloud. The voice follows the speech language setting.
+    func speak(_ text: String) {
+        speech.stopSpeaking(at: .immediate)
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: setting("COMPUTAH_SPEECH_VOICE") ?? "pt-BR")
+        speech.speak(utterance)
+    }
 
     func beginDebugCommand() {
         typedTurnID = UUID().uuidString

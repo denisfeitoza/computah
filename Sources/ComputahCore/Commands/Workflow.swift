@@ -110,6 +110,7 @@ extension CommandEngine {
         var cursor = resume.cursor
         var completed = resume.verified.count
         var verifiedProgress = resume.verified
+        var answers: [String] = []
         // One utterance must not keep the Mac busy indefinitely when the model stalls or loops.
         let deadline = started.addingTimeInterval(Self.turnTimeLimit)
         do {
@@ -232,6 +233,36 @@ extension CommandEngine {
                         }
                         current = fresh
                         expectedPID = fresh.pid
+                        satisfied = true
+                        break
+                    }
+                    if let answer = prepared.answer {
+                        events.append(WorkflowEvent(
+                            clause: clause, action: "Answer — no input",
+                            before: prepared.snapshot?.evidence ?? prepared.observation, after: "",
+                            outcome: answer, selectionSeconds: Date().timeIntervalSince(prepareStart),
+                            verificationSeconds: 0, requests: prepared.requests, selectionDetails: prepared.observation))
+                        answers.append(answer)
+                        satisfied = true
+                        break
+                    }
+                    if let shortcut = prepared.shortcut {
+                        let started = Date()
+                        // Never rerun a shortcut: a failure or timeout leaves its effect unknown.
+                        let outcome = try await cancellableNative { [inputPermit] in
+                            try ShortcutsLibrary.perform(shortcut.name, input: shortcut.input, permit: inputPermit)
+                        }
+                        events.append(WorkflowEvent(
+                            clause: clause, action: "Run shortcut \(shortcut.name)",
+                            before: prepared.observation, after: outcome.output,
+                            outcome: outcome.status == 0 ? "Shortcut finished" : "Shortcut exited with status \(outcome.status)",
+                            selectionSeconds: started.timeIntervalSince(prepareStart),
+                            verificationSeconds: Date().timeIntervalSince(started), requests: prepared.requests))
+                        guard outcome.status == 0 else {
+                            return result("The shortcut \(shortcut.name) failed (status \(outcome.status)). It was not repeated.", false)
+                        }
+                        if !outcome.output.isEmpty { answers.append(outcome.output) }
+                        history.append("The shortcut \(shortcut.name) finished successfully.")
                         satisfied = true
                         break
                     }
@@ -435,7 +466,8 @@ extension CommandEngine {
                     ? "Superseded by a newer request. Earlier input remains subject to observation."
                     : status, false)
         }
-        return result(completed == 0 ? "No command." : "Completed and observed.", completed > 0)
+        return result(completed == 0 ? "No command." : answers.isEmpty ? "Completed and observed." : answers.joined(separator: "\n"),
+                      completed > 0)
     }
 
     /// Dispatch navigation once, then observe the destination without replaying input.

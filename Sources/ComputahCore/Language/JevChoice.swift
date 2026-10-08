@@ -45,6 +45,8 @@ public struct JevSelector {
     public let model: String
     public var endpoint = URL(string: "https://api.typesafe.ai/v1/systemone")!
     public var backend: ChoiceBackend = .typesafe
+    /// Writes described values and answers questions. Without it, only spoken spans can be typed.
+    public var textModel: TextModel? = nil
     public var traceDirectory: URL? = nil
     var usage = ModelUsageTracker()
     public var costs: JevCosts? = nil

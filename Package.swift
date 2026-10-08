@@ -13,6 +13,7 @@ let package = Package(
         .target(name: "ComputahCore", resources: [.process("Prompts")]),
         .executableTarget(name: "Computah", dependencies: ["ComputahCore", .product(name: "FluidAudio", package: "FluidAudio")],
                           resources: [.copy("Resources/Sounds")]),
+        .testTarget(name: "ComputahCoreTests", dependencies: ["ComputahCore"], path: "Tests/ComputahCoreTests"),
     ],
     swiftLanguageModes: [.v5]
 )

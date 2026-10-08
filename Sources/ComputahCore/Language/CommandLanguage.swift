@@ -55,8 +55,8 @@ struct SourceToken {
 
 public enum GoalRelationship: String, Codable, CaseIterable { case replace, revise, resume, append, cancel, unclear }
 
-enum CommandRoute: String { case application, navigation, controls }
-enum ValueFormat: String, CaseIterable { case absent, literal, address, number, percent }
+enum CommandRoute: String { case application, navigation, controls, answer, shortcut }
+enum ValueFormat: String, CaseIterable { case absent, literal, address, number, percent, composed }
 
 struct InterpretedCommand {
     let source: String
@@ -72,8 +72,9 @@ struct InterpretedCommand {
     var actionID: String? = nil
     var activatesApp: Bool = false
     var valueIsNormalized: Bool = true
+    var shortcut: String? = nil
 
-    var canType: Bool { format == .literal || format == .address }
+    var canType: Bool { format == .literal || format == .address || format == .composed }
     var canSetNumber: Bool { format == .number || format == .percent }
 
     var modelValue: String? {
@@ -102,7 +103,8 @@ struct CommandLanguage {
     func interpret(_ source: String, from offset: Int = 0, apps: [InstalledApplication],
                    progress: [String] = [], controls: [AXCandidate] = [],
                    observation: AXSnapshot? = nil, fixedClause: CommandClause? = nil,
-                   revisions: [String] = [], relationshipContext: [String: Any]? = nil, conversationContext: [String: Any] = [:], continuation: AXSnapshot? = nil) async throws -> InterpretedCommand {
+                   revisions: [String] = [], relationshipContext: [String: Any]? = nil, conversationContext: [String: Any] = [:], continuation: AXSnapshot? = nil,
+                   shortcuts: [String] = []) async throws -> InterpretedCommand {
         if let fixedClause {
             guard fixedClause.startUTF16 == offset, fixedClause.endUTF16 <= (source as NSString).length,
                   fixedClause.endUTF16 > offset,
@@ -190,9 +192,10 @@ struct CommandLanguage {
             JevOption(id: "reobserve", description: LanguagePrompts.text("action_reobserve")),
             JevOption(id: "already_satisfied", description: LanguagePrompts.text("action_already_satisfied"))]
         var questions = (fixedClause == nil ? [question("boundary", ends)] : []) + [
-            question("route", [CommandRoute.application, .navigation, .controls].map {
+            question("route", ([CommandRoute.application, .navigation, .controls, .answer] + (shortcuts.isEmpty ? [] : [.shortcut])).map {
                 JevOption(id: $0.rawValue, description: LanguagePrompts.text("route_" + $0.rawValue)) }),
-            ] + valueQuestions() + [
+            ] + valueQuestions() + (shortcuts.isEmpty ? [] : [question("shortcut", shortcuts.enumerated().map {
+                JevOption(id: "sc\($0.offset)", description: "Run the shortcut named: \($0.element)") })]) + [
             question("application", appOptions.isEmpty ? [JevOption(id: "unavailable", description: "No application catalog available")] : appOptions),
             question("action", controlOptions)]
         let observedTargetIDs = Set(controls.map { byNode[$0.nodeID]!.count > 1 ? "target_n\($0.nodeID)" : $0.id })
@@ -336,7 +339,9 @@ struct CommandLanguage {
         var valueRange: NSRange?
         var value: String?
         let selectedControl = controls.first { $0.id == actionID }
-        let requiresValue = route == .navigation || selectedControl.map { [.typeText, .replaceText, .setNumber].contains($0.operation) } == true
+        let shortcutInput = route == .shortcut && [ValueFormat.literal.rawValue, ValueFormat.composed.rawValue].contains(valueAnswers.format ?? "")
+        let requiresValue = route == .navigation || shortcutInput ||
+            selectedControl.map { [.typeText, .replaceText, .setNumber].contains($0.operation) } == true
         if requiresValue {
             if valueAnswers.format == nil || valueAnswers.format == ValueFormat.absent.rawValue {
                 conditionalState["selected_target"] = selectedControl?.description ?? "Navigate to requested address"
@@ -347,7 +352,17 @@ struct CommandLanguage {
                 throw JevFailure.invalid("The instruction's value is unclear.")
             }
             format = selected
-            if format != .absent {
+            if format == .composed {
+                // The user described the text instead of dictating it; a text model writes it.
+                guard let textModel = selector.textModel else {
+                    throw JevFailure.invalid("Writing a value needs the OpenRouter text model.")
+                }
+                value = try await textModel.compose([
+                    "original_request": source, "active_instruction": clause.text,
+                    "selected_field": selectedControl?.description ?? "Navigation address",
+                    "observed_scene": observation?.selectionEvidence ?? "Unknown",
+                    "conversation_context": conversationContext])
+            } else if format != .absent {
                 guard let firstID = valueAnswers.first, let lastID = valueAnswers.last,
                       let first = valueTokens[firstID], let last = valueTokens[lastID], first.source == last.source,
                       first.token.range.location <= last.token.range.location,
@@ -374,7 +389,10 @@ struct CommandLanguage {
         result.valueSource = valueAnswers.first.flatMap { valueTokens[$0]?.source }
         result.actionID = actionID
         result.activatesApp = needsActivation
-        result.valueIsNormalized = format == .literal || format == .absent
+        if route == .shortcut {
+            result.shortcut = shortcuts.indices.first { "sc\($0)" == answers.answer("shortcut") }.map { shortcuts[$0] }
+        }
+        result.valueIsNormalized = format == .literal || format == .absent || format == .composed
         return result
     }
 
@@ -395,7 +413,7 @@ struct CommandLanguage {
         case .number, .percent:
             let number = try await number(raw)
             normalized = number + (command.format == .percent ? "%" : "")
-        case .literal, .absent: return command
+        case .literal, .absent, .composed: return command
         }
         var result = command
         result.value = normalized

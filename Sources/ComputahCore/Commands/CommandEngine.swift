@@ -13,6 +13,10 @@ public struct PreparedAction {
     var permit: InputPermit = .standalone()
     var navigation: URL? = nil
     var navigationBrowser: InstalledApplication? = nil
+    /// A spoken-style answer about the observed screen. Sends no input.
+    var answer: String? = nil
+    /// A Shortcuts library entry and its optional text input.
+    var shortcut: (name: String, input: String?)? = nil
     var interpretation: InterpretedCommand? = nil
     var captureSeconds: Double = 0
     var modelSeconds: Double = 0
@@ -22,7 +26,7 @@ public struct PreparedAction {
     var usage = ModelUsage()
 
     var hasExecutablePlan: Bool {
-        launch != nil || navigation != nil || candidate != nil || interpretation?.actionID == "already_satisfied"
+        launch != nil || navigation != nil || candidate != nil || answer != nil || shortcut != nil || interpretation?.actionID == "already_satisfied"
     }
 
     /// Workflow handles app launches and navigation. This sends one observed control action.
@@ -133,6 +137,7 @@ public struct CommandEngine {
         if let continuation {
             guard let snapshot, snapshot.sameWindow(as: continuation) else { throw AXFailure.changed }
         }
+        let shortcuts = try await cancellableNative { ShortcutsLibrary.names() }
         let language = CommandLanguage(selector: selector)
         var scope = snapshot.map { availableCandidates($0, excluded: excluded) } ?? []
         var interpreted: InterpretedCommand
@@ -141,7 +146,8 @@ public struct CommandEngine {
         }
         let interpretStart = Date()
         interpreted = try await language.interpret(command, from: offset, apps: apps,
-            progress: progress, controls: scope, observation: snapshot, fixedClause: existing?.clause, revisions: revisions, relationshipContext: relationshipContext, conversationContext: conversationContext, continuation: continuation)
+            progress: progress, controls: scope, observation: snapshot, fixedClause: existing?.clause, revisions: revisions, relationshipContext: relationshipContext, conversationContext: conversationContext, continuation: continuation,
+            shortcuts: shortcuts)
         modelSeconds += Date().timeIntervalSince(interpretStart)
         func eligible(_ candidate: AXCandidate) -> Bool {
             guard !excluded.contains(candidate.description) else { return false }
@@ -182,6 +188,27 @@ public struct CommandEngine {
         }
         if interpreted.route == nil {
             return prepared(status: "No clear action requested.")
+        }
+        if interpreted.route == .shortcut {
+            guard let name = interpreted.shortcut else { return prepared(status: "No shortcut matches the request.") }
+            var result = prepared(description: "Run shortcut \(name)")
+            result.shortcut = (name, interpreted.value)
+            return result
+        }
+        if interpreted.route == .answer {
+            guard let textModel = selector.textModel else {
+                return prepared(status: "Answering questions needs the OpenRouter text model.")
+            }
+            let start = Date()
+            let reply = try await textModel.answer([
+                "question": interpreted.clause.text, "original_request": command,
+                "app": snapshot?.appName ?? "Unknown",
+                "observed_content": snapshot?.selectionEvidence ?? captureFailure ?? "No observation.",
+                "conversation_context": conversationContext])
+            modelSeconds += Date().timeIntervalSince(start)
+            var result = prepared(status: reply, description: "Answer")
+            result.answer = reply
+            return result
         }
         if interpreted.route == .controls {
             var selected = interpreted.actionID

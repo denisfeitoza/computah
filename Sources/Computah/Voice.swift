@@ -17,6 +17,8 @@ import ComputahCore
     var onProviderEvent: (([String: Any]) -> Void)?
     var onDiagnosticInputFinished: (() -> Void)?
     private(set) var isListening = false
+    /// True while Computah itself is talking; the microphone must not turn that into a command.
+    var isSuppressed: () -> Bool = { false }
 
     /// Language hint for Parakeet's script filter. `COMPUTAH_SPEECH_LANGUAGE` overrides it.
     var language: Language? = .portuguese
@@ -157,6 +159,10 @@ import ComputahCore
     private func consume(_ chunk: [Float], id: UUID) {
         let rms = sqrt(chunk.reduce(0) { $0 + $1 * $1 } / Float(max(1, chunk.count)))
         onLevel?(min(1, Double(rms) * 12))
+        if isSuppressed() {
+            endpoint = Endpointer()
+            return
+        }
         switch endpoint.feed(chunk, rms: rms) {
         case .none: break
         case .began(let turn):

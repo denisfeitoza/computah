@@ -10,6 +10,11 @@
 > - **Keys in Keychain:** `security add-generic-password -a "$USER" -s openrouter-api -w` (and `typesafe-api`).
 > - **Built outside iCloud:** `zsh scripts/build.sh` writes `~/Applications/Computah.app`.
 >   Create a "Computah Dev" code-signing certificate so permissions survive rebuilds.
+> - **Writes text you describe.** "Responde dizendo que chego às 10" types a composed reply: a small OpenRouter model
+>   (`inception/mercury-2.5` by default, `COMPUTAH_TEXT_MODEL`) writes values that were not dictated word for word.
+> - **Answers questions about the screen** ("o que diz esse e-mail?") and reads the answer aloud in pt-BR. No input is sent.
+> - **Runs your Shortcuts.** Every entry in the Shortcuts app is an action; text values pass as shortcut input.
+> - **Offline unit tests:** `zsh scripts/test.sh`.
 > - No confirmation step before actions. Use this fork only on a machine you are willing to let it change.
 
 

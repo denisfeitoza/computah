@@ -13,5 +13,7 @@ jobs:
         run: python3 scripts/check-public-tree.py
       - name: Build developer bundle
         run: zsh scripts/build.sh
+      - name: Offline unit tests
+        run: zsh scripts/test.sh
       - name: Check end-to-end runner syntax
         run: python3 -m py_compile Tests/end_to_end.py
