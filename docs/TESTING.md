@@ -8,7 +8,7 @@ It also checks the end-to-end runner's Python syntax.
 CI needs no API keys or app permissions. It does not run the live tests.
 A hosted CI run requires you to push the repository.
 
-The project has no unit test suite or Swift test targets.
+Offline unit tests run with `zsh scripts/test.sh` (Swift Testing, target `ComputahCoreTests`).
 A successful build does not prove that commands work.
 
 ## End-to-end tests
@@ -27,10 +27,10 @@ Each test generates speech locally with the macOS Samantha voice by default.
 Use `--voice Daniel` to check another installed voice.
 The summary records the selected voice.
 The runner converts the audio to PCM16 and sends it through the signed Computah app.
-Computah uses the real Deepgram and Jev connections, then operates the real target app.
+Computah uses local speech recognition and the real decision model, then operates the real target app.
 There are no simulated provider replies or app controls.
 
-The test requires a final Deepgram turn, recorded Jev requests, actual input, and a completed diagnostic report.
+The test requires a final speech turn, recorded Jev requests, actual input, and a completed diagnostic report.
 The document tests also compare object IDs before and after the command through each app's scripting interface.
 Only the new object's content is read for the final text check.
 Text comparison ignores letter case and whitespace formatting.
@@ -50,8 +50,8 @@ These tests create documents, play music, change channels, and navigate Chrome.
 They can send private app content to providers.
 Use them only with explicit permission and an idle, unlocked Mac.
 
-1. Set `TYPESAFE_API_KEY` and `DEEPGRAM_API_KEY` in the ignored root `.env` file.
-2. Enable Accessibility access for `outputs/Computah.app`.
+1. Add the OpenRouter key to Keychain (service `openrouter-api`) or `OPENROUTER_API_KEY` to `.env`.
+2. Enable Accessibility access for `~/Applications/Computah.app`.
 3. Open the apps for the selected tests. Sign in where required.
 4. Pause Spotify before its test.
 5. In Discord, select a server with a visible general text channel. Open a different channel in that server.
@@ -123,7 +123,7 @@ If someone starts using the Mac during the test, stop the test.
 A result from the wrong app does not count as success.
 
 Build first.
-The executable is `outputs/Computah.app/Contents/MacOS/Computah`.
+The executable is `~/Applications/Computah.app/Contents/MacOS/Computah`.
 Pass `--root "$PWD"` when you run it from the project folder.
 Keep reports and captures under ignored `outputs/`.
 
@@ -139,7 +139,7 @@ Keep reports and captures under ignored `outputs/`.
 | `--hover` | Move the pointer during `--inspect-hits`. This is a live action. |
 | `--command TEXT --report PATH` | Run a command with real providers and app input. Save its result. |
 | `--scenario PATH --report PATH` | Run a series of commands through the normal command controller. |
-| `--audio-pcm PATH --report PATH` | Send supplied audio through Deepgram, Jev, and real app actions. |
+| `--audio-pcm PATH --report PATH` | Send supplied audio through local speech recognition, the decision model, and real app actions. |
 | `--trace-dir PATH` | Save private provider requests and replies for a command run. |
 | `--initial-nodes COUNT` | Change the initial control-read limit for a diagnostic run. |
 | `--physical-activation` | Explicitly use the default physical clicks after target hit testing. |

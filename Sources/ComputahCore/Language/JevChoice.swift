@@ -248,6 +248,9 @@ public struct JevSelector {
                     throw JevFailure.invalid("The \(backend == .typesafe ? "TypeSafe" : "OpenRouter") key was rejected (HTTP \(status)). Rotate it in Keychain.")
                 }
                 if status == 402 { throw JevFailure.invalid("OpenRouter reports no credit left (HTTP 402).") }
+                if backend == .openRouter {
+                    throw JevFailure.invalid("OpenRouter returned HTTP \(status): \(SensitiveText.redact(String(detail.prefix(300))))")
+                }
                 throw JevFailure.service(status)
             }
             do {

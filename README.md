@@ -26,9 +26,9 @@ Computah reads the controls that apps provide through macOS Accessibility.
 These controls form an **Accessibility tree**: a hierarchy of windows, buttons,
 text fields, and other interface elements.
 
-Deepgram converts speech to text. TypeSafe's Jev model interprets the command
+A local Parakeet model converts speech to text on this Mac. TypeSafe's Jev model (or an OpenRouter model) interprets the command
 and chooses the next action. Computah sends the action and checks the result.
-Voice input currently uses Deepgram's English model.
+Voice input defaults to Portuguese (`COMPUTAH_SPEECH_LANGUAGE`).
 
 **This is an experiment.** Some apps provide incomplete controls. The model can
 choose the wrong action. Check the results before you trust Computah with important work.
@@ -41,7 +41,7 @@ and result checks throughout the flow.
 ```mermaid
 flowchart TD
     Start(["START HERE · Turn listening on"]) --> A["Microphone audio"]
-    A --> B["Deepgram Flux converts speech to text"]
+    A --> B["Local Parakeet model converts speech to text"]
     B --> C["Computah receives the final speech turn"]
     C --> D["Read current app controls and task context"]
     D --> E["Group available controls into choices"]
@@ -59,7 +59,7 @@ flowchart TD
 ### 1. Receive speech
 
 When listening is on, Computah converts microphone audio to 16 kHz mono PCM16.
-It streams this audio to Deepgram Flux through a WebSocket connection.
+In this fork, local endpointing and Parakeet produce the same turn events that Deepgram Flux produced upstream.
 Deepgram returns transcript updates and events that identify each speech turn.
 A speech turn is one utterance that Deepgram tracks from its start to its end.
 
@@ -145,7 +145,7 @@ You need:
 - Xcode or Command Line Tools with Swift 6.
 - Python 3 for the build scripts.
 - A [TypeSafe API key](https://docs.typesafe.ai/introduction/quickstart) for commands.
-- A [Deepgram API key](https://developers.deepgram.com/docs/create-additional-api-keys) for voice input.
+- An [OpenRouter API key](https://openrouter.ai/keys). Voice input needs no key.
 
 The Swift package has no third-party packages. Provider use may have a cost.
 
@@ -156,8 +156,8 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Open `.env` in your editor. Fill in `TYPESAFE_API_KEY` and `DEEPGRAM_API_KEY`.
-Do not share this file. The Deepgram key is optional if you only use typed commands in Debug Mode.
+Prefer Keychain: `security add-generic-password -a "$USER" -s openrouter-api -w`. Or fill `OPENROUTER_API_KEY` in `.env`.
+Do not share this file. `TYPESAFE_API_KEY` (service `typesafe-api`) is optional and switches decisions to Jev.
 
 Build and open the app:
 
@@ -165,7 +165,7 @@ Build and open the app:
 zsh scripts/run.sh
 ```
 
-In **System Settings → Privacy & Security → Accessibility**, add and enable `outputs/Computah.app`.
+In **System Settings → Privacy & Security → Accessibility**, add and enable `~/Applications/Computah.app`.
 Allow microphone access when you first start listening.
 The app appears at the top of your screen.
 
@@ -181,7 +181,7 @@ The app appears at the top of your screen.
   It starts off. Use **Reset…** to clear the local total. Missing usage is marked incomplete.
 - Use **Quit Computah** in the notch menu to exit.
 
-Computah sends microphone audio to Deepgram while it listens.
+Microphone audio stays on this Mac; speech recognition runs locally.
 It sends commands and selected app content to TypeSafe.
 This content can include document text and private information. See [privacy](docs/PRIVACY.md).
 
@@ -194,7 +194,7 @@ It does not save command history unless you enable [diagnostic saving](docs/PRIV
 ## Build and change it
 
 ```sh
-zsh scripts/build.sh     # Build outputs/Computah.app.
+zsh scripts/build.sh     # Build ~/Applications/Computah.app.
 zsh scripts/run.sh       # Build and open the app. Quit any running copy first.
 ```
 

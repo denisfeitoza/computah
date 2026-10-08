@@ -7,7 +7,7 @@ Use a Swift 6 toolchain on macOS 14 or later.
 The package uses Swift 5 language mode.
 Run `python3 --version` to check Python.
 
-The build creates `outputs/Computah.app`.
+The build creates `~/Applications/Computah.app` (outside iCloud-synced folders).
 This is a local developer build.
 It is not a signed installer for general distribution.
 
@@ -15,7 +15,7 @@ It is not a signed installer for general distribution.
 
 If Computah cannot read or act on an app, open System Settings.
 Go to **Privacy & Security → Accessibility**.
-Add `outputs/Computah.app` and enable it.
+Add `~/Applications/Computah.app` and enable it.
 
 Microphone permission is needed only for voice input.
 Start listening to request permission.
@@ -34,7 +34,7 @@ Check the key with the provider.
 Never include the key in an issue, screenshot, or log.
 
 Typed commands in Debug Mode need TypeSafe.
-Voice input also needs Deepgram.
+Voice input runs locally; the first start downloads the Parakeet model (about 600 MB).
 
 ## Start or restart
 

@@ -27,7 +27,15 @@ extension App {
     }
 
     /// Keychain first (service names below), then the ignored project-root `.env`.
+    /// Cached per launch: each Keychain read can show an access prompt until the user chooses Always Allow.
     func credential(_ name: String) -> String? {
+        if let cached = credentialCache[name] { return cached }
+        let value = readCredential(name)
+        credentialCache[name] = .some(value)
+        return value
+    }
+
+    private func readCredential(_ name: String) -> String? {
         let services = ["TYPESAFE_API_KEY": "typesafe-api", "OPENROUTER_API_KEY": "openrouter-api",
                         "DEEPGRAM_API_KEY": "deepgram-api"]
         if let service = services[name], let value = Self.keychain(service) { return value }

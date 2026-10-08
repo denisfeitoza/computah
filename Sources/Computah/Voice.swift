@@ -80,6 +80,11 @@ import ComputahCore
         }
     }
 
+    /// Loads the model at launch so the first press of the shortcut does not wait for CoreML compilation.
+    static func preload() {
+        Task { @MainActor in _ = try? await recognizer { _ in } }
+    }
+
     /// Loads Parakeet v3 once per process. The first run downloads about 600 MB to Application Support.
     private static func recognizer(progress: @escaping @Sendable (String) -> Void) async throws -> AsrManager {
         if let asr { return asr }
@@ -166,8 +171,9 @@ import ComputahCore
         switch endpoint.feed(chunk, rms: rms) {
         case .none: break
         case .began(let turn):
+            // Energy alone is not speech: a key click or a cough must not revoke a running command.
+            // The coordinator begins the turn on the first non-empty transcript instead (onText).
             onProviderEvent?(["type": "TurnInfo", "event": "StartOfTurn", "turn": turn])
-            onTurnBegan?(turn)
         case .partial(let turn, let samples):
             transcribe(samples, turn: turn, id: id) { [weak self] text in
                 guard self?.endpoint.turn == turn, self?.endpoint.finalized == false else { return }
@@ -280,12 +286,13 @@ import ComputahCore
                 silent += chunk.count
             }
             let silence = Double(silent) / Voice.sampleRate
-            if silence >= 0.8 || utterance.count >= Voice.maxUtterance {
+            // Natural pauses inside one request reach about 0.8 s in Portuguese speech; end the turn later.
+            if silence >= 1.2 || utterance.count >= Voice.maxUtterance {
                 finalized = true
                 eagerArmed = false
                 return .final(turn, utterance)
             }
-            if silence >= 0.35, !eagerArmed {
+            if silence >= 0.5, !eagerArmed {
                 eagerArmed = true
                 return .eager(turn, utterance)
             }

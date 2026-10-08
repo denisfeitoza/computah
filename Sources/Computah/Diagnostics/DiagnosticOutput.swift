@@ -34,6 +34,8 @@ enum DiagnosticOutput {
 }
 
 extension App {
+    // Swift 6.3 crashes in SIL JumpThreadSimplifyCFG when optimizing this function (-O).
+    @_optimize(none)
     func finishDiagnostic<Report: Encodable>(
         _ report: Report, outcome: DiagnosticOutcome, error: String? = nil, additional: [String: Any] = [:]
     ) -> Never {

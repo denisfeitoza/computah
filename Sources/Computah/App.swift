@@ -6,6 +6,7 @@ import FluidAudio
 @MainActor final class App: NSObject, NSApplicationDelegate {
     let voice = Voice()
     let speech = AVSpeechSynthesizer()
+    var credentialCache: [String: String?] = [:]
     var notch: NotchController?
     var listeningSounds: ListeningSounds?
     var shortcut: ListenShortcut?
@@ -70,6 +71,7 @@ import FluidAudio
         connectVoiceCallbacks(source: .microphone)
         shortcut = ListenShortcut { [weak self] in self?.toggleVoice() }
         notch.show()
+        Voice.preload()
         refresh()
     }
 

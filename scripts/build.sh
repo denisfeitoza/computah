@@ -6,16 +6,16 @@ case "${1:-}" in
   *) print -u2 'Usage: zsh scripts/build.sh'; exit 2 ;;
 esac
 cd "$project_dir"
-swift build
+swift build -c release
 # iCloud-synced folders (Desktop & Documents) re-attach Finder metadata that breaks codesign.
 # Build the bundle outside them by default; COMPUTAH_APP_DIR overrides the location.
 app_dir="${COMPUTAH_APP_DIR:-$HOME/Applications/Computah.app}"
 # Replace generated resources so files from older builds cannot survive a rebuild.
 rm -rf "$app_dir/Contents/Resources"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
-cp .build/debug/Computah "$app_dir/Contents/MacOS/Computah"
-ditto .build/debug/Computah_ComputahCore.bundle "$app_dir/Contents/Resources/Computah_ComputahCore.bundle"
-ditto .build/debug/Computah_Computah.bundle "$app_dir/Contents/Resources/Computah_Computah.bundle"
+cp .build/release/Computah "$app_dir/Contents/MacOS/Computah"
+ditto .build/release/Computah_ComputahCore.bundle "$app_dir/Contents/Resources/Computah_ComputahCore.bundle"
+ditto .build/release/Computah_Computah.bundle "$app_dir/Contents/Resources/Computah_Computah.bundle"
 python3 - "$app_dir/Contents/Info.plist" "$project_dir" <<'PY'
 import plistlib, sys
 with open(sys.argv[1], 'wb') as output:
